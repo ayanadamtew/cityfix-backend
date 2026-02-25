@@ -1,5 +1,6 @@
 const IssueReport = require('../models/IssueReport');
 const { getAnalytics } = require('../services/analyticsService');
+const { sendResolutionNotification } = require('../services/notificationService');
 
 /**
  * GET /api/admin/issues
@@ -55,6 +56,11 @@ const updateIssueStatus = async (req, res, next) => {
             return res
                 .status(404)
                 .json({ message: 'Issue not found or not assigned to you.' });
+        }
+
+        // Fire push notification in background when issue is resolved
+        if (status === 'Resolved') {
+            sendResolutionNotification(issue).catch(() => {/* already logged inside */ });
         }
 
         res.json(issue);

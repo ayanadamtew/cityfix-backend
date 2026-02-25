@@ -1,6 +1,7 @@
 const IssueReport = require('../models/IssueReport');
 const Comment = require('../models/Comment');
 const ReportedPost = require('../models/ReportedPost');
+const Feedback = require('../models/Feedback');
 const { findAdminByCategory } = require('../services/routingService');
 const { toggleUrgencyVote } = require('../services/voteService');
 
@@ -155,6 +156,48 @@ const reportIssue = async (req, res, next) => {
     }
 };
 
+/**
+ * GET /api/issues/mine
+ * Fetch the authenticated citizen's own issue reports.
+ */
+const getMyIssues = async (req, res, next) => {
+    try {
+        const issues = await IssueReport.find({ citizenId: req.user._id })
+            .sort({ createdAt: -1 })
+            .populate('assignedAdminId', 'fullName department');
+        res.json(issues);
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * POST /api/issues/:id/feedback
+ * Citizen submits a star rating (1-5) after issue is Resolved.
+ */
+const submitFeedback = async (req, res, next) => {
+    try {
+        const issueId = req.params.id;
+        const { rating, comment } = req.body;
+
+        const issue = await IssueReport.findById(issueId);
+        if (!issue) {
+            return res.status(404).json({ message: 'Issue not found.' });
+        }
+
+        // Upsert: one feedback per citizen per issue
+        const feedback = await Feedback.findOneAndUpdate(
+            { issueId, citizenId: req.user._id },
+            { rating, comment: comment || '' },
+            { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+        );
+
+        res.status(201).json(feedback);
+    } catch (err) {
+        next(err);
+    }
+};
+
 module.exports = {
     getIssues,
     createIssue,
@@ -162,4 +205,6 @@ module.exports = {
     voteOnIssue,
     addComment,
     reportIssue,
+    getMyIssues,
+    submitFeedback,
 };

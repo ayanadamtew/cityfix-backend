@@ -9,6 +9,8 @@ const {
     voteOnIssue,
     addComment,
     reportIssue,
+    getMyIssues,
+    submitFeedback,
 } = require('../controllers/issueController');
 const requireAuth = require('../middlewares/requireAuth');
 const requireRole = require('../middlewares/requireRole');
@@ -16,6 +18,9 @@ const validate = require('../middlewares/validate');
 
 // GET /api/issues  – public feed
 router.get('/', getIssues);
+
+// GET /api/issues/mine – citizen's own reports (auth required)
+router.get('/mine', requireAuth, requireRole(['CITIZEN']), getMyIssues);
 
 // POST /api/issues – citizen reporting
 router.post(
@@ -57,6 +62,21 @@ router.post(
     [body('reason').notEmpty().withMessage('reason is required.')],
     validate,
     reportIssue
+);
+
+// POST /api/issues/:id/feedback – citizen submits star rating after resolution
+router.post(
+    '/:id/feedback',
+    requireAuth,
+    requireRole(['CITIZEN']),
+    [
+        body('rating')
+            .isInt({ min: 1, max: 5 })
+            .withMessage('rating must be an integer between 1 and 5.'),
+        body('comment').optional().isString(),
+    ],
+    validate,
+    submitFeedback
 );
 
 module.exports = router;

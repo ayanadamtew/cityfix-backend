@@ -27,6 +27,8 @@ const userSchema = new mongoose.Schema(
                 return this.role === 'SECTOR_ADMIN';
             },
         },
+        // Firebase Cloud Messaging token for push notifications (set by mobile on login)
+        fcmToken: { type: String, default: null },
     },
     { timestamps: true }
 );

@@ -300,3 +300,116 @@ describe('POST /api/issues/:id/report', () => {
         expect(res.statusCode).toBe(404);
     });
 });
+
+// ─── GET /api/issues/mine ─────────────────────────────────────────────────────
+describe('GET /api/issues/mine', () => {
+    it("returns only the authenticated citizen's own issues", async () => {
+        const { user: citizen1, token: token1 } = await makeCitizen();
+        const { user: citizen2 } = await makeCitizen();
+
+        await seedIssue(citizen1._id, { description: 'Mine' });
+        await seedIssue(citizen2._id, { description: 'Not mine' });
+
+        const res = await request(app)
+            .get('/api/issues/mine')
+            .set('Authorization', token1);
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body).toHaveLength(1);
+        expect(res.body[0].description).toBe('Mine');
+    });
+
+    it('returns empty array when citizen has no issues', async () => {
+        const { token } = await makeCitizen();
+        const res = await request(app).get('/api/issues/mine').set('Authorization', token);
+        expect(res.statusCode).toBe(200);
+        expect(res.body).toEqual([]);
+    });
+
+    it('returns 401 without auth token', async () => {
+        const res = await request(app).get('/api/issues/mine');
+        expect(res.statusCode).toBe(401);
+    });
+});
+
+// ─── POST /api/issues/:id/feedback ───────────────────────────────────────────
+describe('POST /api/issues/:id/feedback', () => {
+    it('citizen can submit a star rating for their resolved issue', async () => {
+        const { user, token } = await makeCitizen();
+        const issue = await seedIssue(user._id, { status: 'Resolved' });
+
+        const res = await request(app)
+            .post(`/api/issues/${issue._id}/feedback`)
+            .set('Authorization', token)
+            .send({ rating: 4, comment: 'Fixed quickly!' });
+
+        expect(res.statusCode).toBe(201);
+        expect(res.body.rating).toBe(4);
+        expect(res.body.comment).toBe('Fixed quickly!');
+    });
+
+    it('second submission updates the existing feedback (upsert)', async () => {
+        const { user, token } = await makeCitizen();
+        const issue = await seedIssue(user._id, { status: 'Resolved' });
+
+        await request(app)
+            .post(`/api/issues/${issue._id}/feedback`)
+            .set('Authorization', token)
+            .send({ rating: 2 });
+
+        const res = await request(app)
+            .post(`/api/issues/${issue._id}/feedback`)
+            .set('Authorization', token)
+            .send({ rating: 5, comment: 'Much better now!' });
+
+        expect(res.statusCode).toBe(201);
+        expect(res.body.rating).toBe(5);
+    });
+
+    it('returns 422 for rating out of range', async () => {
+        const { user, token } = await makeCitizen();
+        const issue = await seedIssue(user._id);
+
+        const res = await request(app)
+            .post(`/api/issues/${issue._id}/feedback`)
+            .set('Authorization', token)
+            .send({ rating: 6 });
+
+        expect(res.statusCode).toBe(422);
+    });
+
+    it('returns 422 when rating is missing', async () => {
+        const { user, token } = await makeCitizen();
+        const issue = await seedIssue(user._id);
+
+        const res = await request(app)
+            .post(`/api/issues/${issue._id}/feedback`)
+            .set('Authorization', token)
+            .send({ comment: 'No rating provided' });
+
+        expect(res.statusCode).toBe(422);
+    });
+
+    it('returns 404 for a nonexistent issue', async () => {
+        const { token } = await makeCitizen();
+        const fakeId = new mongoose.Types.ObjectId();
+
+        const res = await request(app)
+            .post(`/api/issues/${fakeId}/feedback`)
+            .set('Authorization', token)
+            .send({ rating: 3 });
+
+        expect(res.statusCode).toBe(404);
+    });
+
+    it('returns 401 without auth token', async () => {
+        const { user } = await makeCitizen();
+        const issue = await seedIssue(user._id);
+
+        const res = await request(app)
+            .post(`/api/issues/${issue._id}/feedback`)
+            .send({ rating: 4 });
+
+        expect(res.statusCode).toBe(401);
+    });
+});
