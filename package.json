@@ -1,0 +1,37 @@
+{
+  "name": "cityfix-backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest --runInBand --forceExit",
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "lint": "node --check src/app.js src/config/db.js src/config/firebase.js src/controllers/authController.js src/controllers/issueController.js src/controllers/adminController.js src/services/routingService.js src/services/voteService.js src/services/analyticsService.js src/middlewares/requireAuth.js src/middlewares/requireRole.js src/middlewares/validate.js src/middlewares/errorHandler.js src/routes/authRoutes.js src/routes/issueRoutes.js src/routes/adminRoutes.js server.js"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testTimeout": 30000,
+    "testMatch": [
+      "**/tests/**/*.test.js"
+    ]
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "express-validator": "^7.3.1",
+    "firebase-admin": "^13.6.1",
+    "helmet": "^8.1.0",
+    "mongoose": "^9.2.2",
+    "morgan": "^1.10.1"
+  },
+  "devDependencies": {
+    "jest": "^30.2.0",
+    "mongodb-memory-server": "^11.0.1",
+    "supertest": "^7.2.2"
+  }
+}
