@@ -148,4 +148,87 @@ const getSystemUsers = async (req, res, next) => {
     }
 };
 
-module.exports = { getAdminIssues, updateIssueStatus, getAdminAnalytics, createAdmin, getSystemUsers };
+/**
+ * GET /api/admin/moderation/reports
+ * Super Admin only - fetches all reported posts for review.
+ */
+const getModerationReports = async (req, res, next) => {
+    try {
+        const ReportedPost = require('../models/ReportedPost');
+        const reports = await ReportedPost.find()
+            .sort({ createdAt: -1 })
+            .populate('citizenId', 'fullName email role')
+            .populate({
+                path: 'issueId',
+                populate: {
+                    path: 'citizenId',
+                    select: 'fullName email',
+                },
+            });
+        res.json(reports);
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * DELETE /api/admin/moderation/reports/:id/dismiss
+ * Super Admin only - dismisses a report without deleting the target issue.
+ */
+const dismissReport = async (req, res, next) => {
+    try {
+        const ReportedPost = require('../models/ReportedPost');
+        const reportId = req.params.id;
+        const report = await ReportedPost.findByIdAndDelete(reportId);
+
+        if (!report) {
+            return res.status(404).json({ message: 'Report not found.' });
+        }
+        res.json({ message: 'Report dismissed.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * DELETE /api/admin/moderation/reports/:id/issue
+ * Super Admin only - deletes the target issue and cascades to comments, feedbacks, and reports.
+ */
+const deleteReportedIssue = async (req, res, next) => {
+    try {
+        const ReportedPost = require('../models/ReportedPost');
+        const Comment = require('../models/Comment');
+        const Feedback = require('../models/Feedback');
+        const reportId = req.params.id;
+
+        const report = await ReportedPost.findById(reportId);
+        if (!report) {
+            return res.status(404).json({ message: 'Report not found.' });
+        }
+
+        const issueId = report.issueId;
+
+        // Delete the issue itself
+        await IssueReport.findByIdAndDelete(issueId);
+
+        // Delete associated records to keep DB clean
+        await Comment.deleteMany({ issueId });
+        await Feedback.deleteMany({ issueId });
+        await ReportedPost.deleteMany({ issueId });
+
+        res.json({ message: 'Issue and associated data deleted.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
+module.exports = {
+    getAdminIssues,
+    updateIssueStatus,
+    getAdminAnalytics,
+    createAdmin,
+    getSystemUsers,
+    getModerationReports,
+    dismissReport,
+    deleteReportedIssue
+};

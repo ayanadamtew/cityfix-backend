@@ -38,4 +38,30 @@ router.get(
     getAdminAnalytics
 );
 
+// --- MODERATION ---
+
+// GET /api/admin/moderation/reports
+router.get(
+    '/moderation/reports',
+    requireAuth,
+    requireRole(['SUPER_ADMIN']),
+    require('../controllers/adminController').getModerationReports
+);
+
+// DELETE /api/admin/moderation/reports/:id/dismiss
+router.delete(
+    '/moderation/reports/:id/dismiss',
+    requireAuth,
+    requireRole(['SUPER_ADMIN']),
+    require('../controllers/adminController').dismissReport
+);
+
+// DELETE /api/admin/moderation/reports/:id/issue
+router.delete(
+    '/moderation/reports/:id/issue',
+    requireAuth,
+    requireRole(['SUPER_ADMIN']),
+    require('../controllers/adminController').deleteReportedIssue
+);
+
 module.exports = router;
