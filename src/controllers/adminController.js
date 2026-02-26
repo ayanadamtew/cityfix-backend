@@ -1,6 +1,8 @@
 const IssueReport = require('../models/IssueReport');
+const User = require('../models/User'); // Added for admin creation
 const { getAnalytics } = require('../services/analyticsService');
 const { sendResolutionNotification } = require('../services/notificationService');
+const { admin } = require('../config/firebase'); // Added for admin creation
 
 /**
  * GET /api/admin/issues
@@ -12,7 +14,7 @@ const getAdminIssues = async (req, res, next) => {
         const filter =
             req.user.role === 'SUPER_ADMIN'
                 ? {}
-                : { assignedAdminId: req.user._id };
+                : { category: req.user.department };
 
         const issues = await IssueReport.find(filter)
             .sort({ createdAt: -1 })
@@ -44,7 +46,7 @@ const updateIssueStatus = async (req, res, next) => {
         const filter =
             req.user.role === 'SUPER_ADMIN'
                 ? { _id: req.params.id }
-                : { _id: req.params.id, assignedAdminId: req.user._id };
+                : { _id: req.params.id, category: req.user.department };
 
         const issue = await IssueReport.findOneAndUpdate(
             filter,
@@ -71,15 +73,79 @@ const updateIssueStatus = async (req, res, next) => {
 
 /**
  * GET /api/admin/analytics
- * Super Admin only – aggregated dashboard statistics.
+ * Fetch aggregated dashboard statistics.
  */
 const getAdminAnalytics = async (req, res, next) => {
     try {
-        const stats = await getAnalytics();
+        const department = req.user.role === 'SUPER_ADMIN' ? null : req.user.department;
+        const stats = await getAnalytics(department);
         res.json(stats);
     } catch (err) {
         next(err);
     }
 };
 
-module.exports = { getAdminIssues, updateIssueStatus, getAdminAnalytics };
+/**
+ * POST /api/admin/users
+ * Super Admin only - creates a new Sector Admin.
+ */
+const createAdmin = async (req, res, next) => {
+    try {
+        const { fullName, email, password, department } = req.body;
+
+        if (!fullName || !email || !password || !department) {
+            return res.status(400).json({ message: 'All fields are required.' });
+        }
+
+        const validDepartments = ['Water', 'Waste', 'Road', 'Electricity'];
+        if (!validDepartments.includes(department)) {
+            return res.status(400).json({ message: 'Invalid department.' });
+        }
+
+        // Check if user already exists
+        const existing = await User.findOne({ email });
+        if (existing) {
+            return res.status(400).json({ message: 'User with this email already exists.' });
+        }
+
+        // Create user in Firebase Auth
+        const firebaseUser = await admin.auth().createUser({
+            email,
+            password,
+            displayName: fullName,
+        });
+
+        // Set custom claims (optional but good practice)
+        await admin.auth().setCustomUserClaims(firebaseUser.uid, { role: 'SECTOR_ADMIN' });
+
+        // Create user in MongoDB
+        const user = await User.create({
+            firebaseUid: firebaseUser.uid,
+            email,
+            fullName,
+            role: 'SECTOR_ADMIN',
+            department,
+        });
+
+        res.status(201).json({ message: 'Admin created successfully.', user });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
+ * GET /api/admin/users
+ * Super Admin only - fetches all users grouped by Admins and Citizens.
+ */
+const getSystemUsers = async (req, res, next) => {
+    try {
+        const admins = await User.find({ role: { $in: ['SECTOR_ADMIN', 'SUPER_ADMIN'] } }).sort({ createdAt: -1 });
+        const citizens = await User.find({ role: 'CITIZEN' }).sort({ createdAt: -1 });
+
+        res.json({ admins, citizens });
+    } catch (err) {
+        next(err);
+    }
+};
+
+module.exports = { getAdminIssues, updateIssueStatus, getAdminAnalytics, createAdmin, getSystemUsers };

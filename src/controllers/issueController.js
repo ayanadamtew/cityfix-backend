@@ -93,7 +93,7 @@ const getIssueById = async (req, res, next) => {
 
         const comments = await Comment.find({ issueId: issue._id })
             .sort({ createdAt: 1 })
-            .populate('authorId', 'fullName role');
+            .populate('authorId', 'fullName role department');
 
         res.json({ issue, comments });
     } catch (err) {
@@ -144,7 +144,7 @@ const addComment = async (req, res, next) => {
         // Keep a live comment count on the issue document
         await IssueReport.findByIdAndUpdate(issueId, { $inc: { commentCount: 1 } });
 
-        await comment.populate('authorId', 'fullName role');
+        await comment.populate('authorId', 'fullName role department');
         res.status(201).json(comment);
     } catch (err) {
         next(err);
