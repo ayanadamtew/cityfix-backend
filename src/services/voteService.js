@@ -25,7 +25,7 @@ const toggleUrgencyVote = async (issueId, citizenId) => {
                 $inc: { urgencyCount: -1 },
                 $pull: { votedUserIds: citizenId },
             },
-            { returnDocument: 'after' }
+            { new: true }
         );
         action = 'unvoted';
     } else {
@@ -37,7 +37,7 @@ const toggleUrgencyVote = async (issueId, citizenId) => {
                 $inc: { urgencyCount: 1 },
                 $addToSet: { votedUserIds: citizenId },
             },
-            { returnDocument: 'after' }
+            { new: true }
         );
         action = 'voted';
     }
