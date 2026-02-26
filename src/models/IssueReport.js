@@ -44,6 +44,14 @@ const issueReportSchema = new mongoose.Schema(
             type: Number,
             default: 0,
         },
+        votedUserIds: [{
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+        }],
+        commentCount: {
+            type: Number,
+            default: 0,
+        },
         draftedAt: {
             type: Date,
             default: null,

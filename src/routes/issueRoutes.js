@@ -11,6 +11,7 @@ const {
     reportIssue,
     getMyIssues,
     submitFeedback,
+    editIssue,
 } = require('../controllers/issueController');
 const requireAuth = require('../middlewares/requireAuth');
 const requireRole = require('../middlewares/requireRole');
@@ -41,6 +42,20 @@ router.post(
 
 // GET /api/issues/:id – single issue with comments
 router.get('/:id', getIssueById);
+
+// PUT /api/issues/:id – citizen edits their pending report
+router.put(
+    '/:id',
+    requireAuth,
+    requireRole(['CITIZEN']),
+    [
+        body('category').optional().isIn(['Water', 'Waste', 'Road', 'Electricity']),
+        body('description').optional().isString(),
+        body('location.kebele').optional().isString(),
+    ],
+    validate,
+    editIssue
+);
 
 // POST /api/issues/:id/vote – toggle urgency vote
 router.post('/:id/vote', requireAuth, requireRole(['CITIZEN']), voteOnIssue);

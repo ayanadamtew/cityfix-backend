@@ -21,7 +21,10 @@ const toggleUrgencyVote = async (issueId, citizenId) => {
         await UrgencyVote.deleteOne({ _id: existingVote._id });
         updatedIssue = await IssueReport.findByIdAndUpdate(
             issueId,
-            { $inc: { urgencyCount: -1 } },
+            {
+                $inc: { urgencyCount: -1 },
+                $pull: { votedUserIds: citizenId },
+            },
             { returnDocument: 'after' }
         );
         action = 'unvoted';
@@ -30,7 +33,10 @@ const toggleUrgencyVote = async (issueId, citizenId) => {
         await UrgencyVote.create({ issueId, citizenId });
         updatedIssue = await IssueReport.findByIdAndUpdate(
             issueId,
-            { $inc: { urgencyCount: 1 } },
+            {
+                $inc: { urgencyCount: 1 },
+                $addToSet: { votedUserIds: citizenId },
+            },
             { returnDocument: 'after' }
         );
         action = 'voted';

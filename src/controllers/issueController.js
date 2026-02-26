@@ -21,16 +21,33 @@ const getIssues = async (req, res, next) => {
         const sortOption =
             sort === 'urgent' ? { urgencyCount: -1 } : { createdAt: -1 };
 
-        const issues = await IssueReport.find(filter)
-            .sort(sortOption)
-            .populate('citizenId', 'fullName')
-            .populate('assignedAdminId', 'fullName department');
+        const issues = await IssueReport.aggregate([
+            { $match: filter },
+            { $sort: sortOption },
+            {
+                $lookup: {
+                    from: 'comments',
+                    localField: '_id',
+                    foreignField: 'issueId',
+                    as: '_comments',
+                },
+            },
+            { $addFields: { commentCount: { $size: '$_comments' } } },
+            { $project: { _comments: 0 } },
+        ]);
+
+        // Populate citizenId and assignedAdminId manually after aggregation
+        await IssueReport.populate(issues, [
+            { path: 'citizenId', select: 'fullName' },
+            { path: 'assignedAdminId', select: 'fullName department' },
+        ]);
 
         res.json(issues);
     } catch (err) {
         next(err);
     }
 };
+
 
 /**
  * POST /api/issues
@@ -124,6 +141,9 @@ const addComment = async (req, res, next) => {
             text: req.body.text,
         });
 
+        // Keep a live comment count on the issue document
+        await IssueReport.findByIdAndUpdate(issueId, { $inc: { commentCount: 1 } });
+
         await comment.populate('authorId', 'fullName role');
         res.status(201).json(comment);
     } catch (err) {
@@ -162,14 +182,31 @@ const reportIssue = async (req, res, next) => {
  */
 const getMyIssues = async (req, res, next) => {
     try {
-        const issues = await IssueReport.find({ citizenId: req.user._id })
-            .sort({ createdAt: -1 })
-            .populate('assignedAdminId', 'fullName department');
+        const issues = await IssueReport.aggregate([
+            { $match: { citizenId: req.user._id } },
+            { $sort: { createdAt: -1 } },
+            {
+                $lookup: {
+                    from: 'comments',
+                    localField: '_id',
+                    foreignField: 'issueId',
+                    as: '_comments',
+                },
+            },
+            { $addFields: { commentCount: { $size: '$_comments' } } },
+            { $project: { _comments: 0 } },
+        ]);
+
+        await IssueReport.populate(issues, [
+            { path: 'assignedAdminId', select: 'fullName department' },
+        ]);
+
         res.json(issues);
     } catch (err) {
         next(err);
     }
 };
+
 
 /**
  * POST /api/issues/:id/feedback
@@ -198,6 +235,48 @@ const submitFeedback = async (req, res, next) => {
     }
 };
 
+/**
+ * PUT /api/issues/:id
+ * Citizen edits their own pending issue report (e.g. description, location).
+ */
+const editIssue = async (req, res, next) => {
+    try {
+        const issueId = req.params.id;
+        const { description, category, location } = req.body;
+
+        const issue = await IssueReport.findById(issueId);
+        if (!issue) {
+            return res.status(404).json({ message: 'Issue not found.' });
+        }
+
+        // Verify ownership
+        if (issue.citizenId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({ message: 'Not authorized to edit this issue.' });
+        }
+
+        // Only allow edits if status is pending
+        if (issue.status.toLowerCase() !== 'pending') {
+            return res.status(400).json({ message: 'Cannot edit an issue that is already being processed.' });
+        }
+
+        const updatedIssue = await IssueReport.findByIdAndUpdate(
+            issueId,
+            {
+                description,
+                category,
+                location
+            },
+            { new: true, runValidators: true }
+        )
+            .populate('citizenId', 'fullName')
+            .populate('assignedAdminId', 'fullName department');
+
+        res.json(updatedIssue);
+    } catch (err) {
+        next(err);
+    }
+};
+
 module.exports = {
     getIssues,
     createIssue,
@@ -206,5 +285,6 @@ module.exports = {
     addComment,
     reportIssue,
     getMyIssues,
+    editIssue,
     submitFeedback,
 };
