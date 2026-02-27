@@ -4,6 +4,7 @@ const ReportedPost = require('../models/ReportedPost');
 const Feedback = require('../models/Feedback');
 const { findAdminByCategory } = require('../services/routingService');
 const { toggleUrgencyVote } = require('../services/voteService');
+const { getIo } = require('../services/socketService');
 
 /**
  * GET /api/issues
@@ -70,6 +71,16 @@ const createIssue = async (req, res, next) => {
             // Offline sync: preserve original capture time if provided
             draftedAt: draftedAt ? new Date(draftedAt) : undefined,
         });
+
+        // Populate basic info before emitting to feed
+        await issue.populate('citizenId', 'fullName');
+
+        try {
+            const io = getIo();
+            io.emit('new_issue', issue);
+        } catch (err) {
+            console.error('[Socket.io] Failed to emit new_issue', err);
+        }
 
         res.status(201).json(issue);
     } catch (err) {
@@ -145,6 +156,18 @@ const addComment = async (req, res, next) => {
         await IssueReport.findByIdAndUpdate(issueId, { $inc: { commentCount: 1 } });
 
         await comment.populate('authorId', 'fullName role department');
+
+        try {
+            const io = getIo();
+            io.to(`issue_${issueId}`).emit('new_comment', comment);
+            io.emit('issue_comment_count_updated', {
+                issueId: issueId,
+                commentCount: issue.commentCount + 1
+            });
+        } catch (err) {
+            console.error('[Socket.io] Failed to emit new_comment', err);
+        }
+
         res.status(201).json(comment);
     } catch (err) {
         next(err);

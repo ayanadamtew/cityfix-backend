@@ -1,5 +1,6 @@
 const IssueReport = require('../models/IssueReport');
 const UrgencyVote = require('../models/UrgencyVote');
+const { getIo } = require('./socketService');
 
 /**
  * Toggle urgency vote for a citizen on an issue.
@@ -40,6 +41,17 @@ const toggleUrgencyVote = async (issueId, citizenId) => {
             { new: true }
         );
         action = 'voted';
+    }
+
+    // Emit live update to all connected clients
+    try {
+        const io = getIo();
+        io.emit('vote_updated', {
+            issueId: updatedIssue._id.toString(),
+            urgencyCount: updatedIssue.urgencyCount
+        });
+    } catch (err) {
+        console.error('[Socket.io] Failed to emit vote update', err);
     }
 
     return { action, urgencyCount: updatedIssue.urgencyCount };

@@ -3,6 +3,7 @@ const User = require('../models/User'); // Added for admin creation
 const { getAnalytics } = require('../services/analyticsService');
 const { sendResolutionNotification } = require('../services/notificationService');
 const { admin } = require('../config/firebase'); // Added for admin creation
+const { getIo } = require('../services/socketService');
 
 /**
  * GET /api/admin/issues
@@ -35,7 +36,7 @@ const getAdminIssues = async (req, res, next) => {
 const updateIssueStatus = async (req, res, next) => {
     try {
         const { status } = req.body;
-        const allowed = ['In Progress', 'Resolved'];
+        const allowed = ['Pending', 'In Progress', 'Resolved'];
 
         if (!allowed.includes(status)) {
             return res.status(422).json({
@@ -63,6 +64,16 @@ const updateIssueStatus = async (req, res, next) => {
         // Fire push notification in background when issue is resolved
         if (status === 'Resolved') {
             sendResolutionNotification(issue).catch(() => {/* already logged inside */ });
+        }
+
+        try {
+            const io = getIo();
+            io.emit('issue_status_changed', {
+                issueId: issue._id.toString(),
+                status: issue.status
+            });
+        } catch (err) {
+            console.error('[Socket.io] Failed to emit issue_status_changed', err);
         }
 
         res.json(issue);
