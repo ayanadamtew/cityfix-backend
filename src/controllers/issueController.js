@@ -106,7 +106,9 @@ const getIssueById = async (req, res, next) => {
             .sort({ createdAt: 1 })
             .populate('authorId', 'fullName role department');
 
-        res.json({ issue, comments });
+        const feedback = await Feedback.findOne({ issueId: issue._id });
+
+        res.json({ issue, comments, feedback });
     } catch (err) {
         next(err);
     }
@@ -193,7 +195,24 @@ const reportIssue = async (req, res, next) => {
             reason: req.body.reason,
         });
 
-        res.status(201).json({ message: 'Issue reported for review.', report });
+        const populatedReport = await ReportedPost.findById(report._id)
+            .populate('citizenId', 'fullName email role')
+            .populate({
+                path: 'issueId',
+                populate: {
+                    path: 'citizenId',
+                    select: 'fullName email',
+                },
+            });
+
+        try {
+            const io = getIo();
+            io.emit('new_moderation_report', populatedReport);
+        } catch (err) {
+            console.error('[Socket.io] Failed to emit new_moderation_report', err);
+        }
+
+        res.status(201).json({ message: 'Issue reported for review.', report: populatedReport });
     } catch (err) {
         next(err);
     }

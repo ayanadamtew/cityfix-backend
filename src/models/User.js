@@ -29,6 +29,7 @@ const userSchema = new mongoose.Schema(
         },
         // Firebase Cloud Messaging token for push notifications (set by mobile on login)
         fcmToken: { type: String, default: null },
+        isDisabled: { type: Boolean, default: false },
     },
     { timestamps: true }
 );

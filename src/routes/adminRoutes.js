@@ -7,6 +7,7 @@ const {
     getAdminAnalytics,
     createAdmin,
     getSystemUsers,
+    toggleUserStatus,
 } = require('../controllers/adminController');
 const requireAuth = require('../middlewares/requireAuth');
 const requireRole = require('../middlewares/requireRole');
@@ -18,6 +19,9 @@ router.post('/users', requireAuth, requireRole(['SUPER_ADMIN']), createAdmin);
 
 // GET /api/admin/users
 router.get('/users', requireAuth, requireRole(['SUPER_ADMIN']), getSystemUsers);
+
+// PUT /api/admin/users/:id/status
+router.put('/users/:id/status', requireAuth, requireRole(['SUPER_ADMIN']), toggleUserStatus);
 
 // GET /api/admin/issues
 router.get('/issues', requireAuth, requireRole(ADMIN_ROLES), getAdminIssues);

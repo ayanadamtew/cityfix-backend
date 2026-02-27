@@ -25,6 +25,11 @@ const requireAuth = async (req, res, next) => {
             return res.status(401).json({ message: 'Unauthorized: User not registered in system.' });
         }
 
+        if (user.isDisabled) {
+            console.warn('[requireAuth] REJECTED — User', user._id, 'is disabled.');
+            return res.status(403).json({ message: 'Forbidden: Your account has been disabled. Please contact the administrator.' });
+        }
+
         req.user = user;
         next();
     } catch (err) {

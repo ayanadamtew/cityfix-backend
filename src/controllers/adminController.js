@@ -35,6 +35,12 @@ const getAdminIssues = async (req, res, next) => {
  */
 const updateIssueStatus = async (req, res, next) => {
     try {
+        if (req.user.role === 'SUPER_ADMIN') {
+            return res.status(403).json({
+                message: 'Forbidden: Super Admins can only view issues, not edit their status. Please leave this to the assigned Sector Admin.',
+            });
+        }
+
         const { status } = req.body;
         const allowed = ['Pending', 'In Progress', 'Resolved'];
 
@@ -160,6 +166,43 @@ const getSystemUsers = async (req, res, next) => {
 };
 
 /**
+ * PUT /api/admin/users/:id/status
+ * Super Admin only - disables or enables a user.
+ */
+const toggleUserStatus = async (req, res, next) => {
+    try {
+        const userId = req.params.id;
+        const { isDisabled } = req.body;
+
+        if (typeof isDisabled !== 'boolean') {
+            return res.status(400).json({ message: 'isDisabled must be a boolean.' });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+
+        if (user.role === 'SUPER_ADMIN') {
+            return res.status(403).json({ message: 'Cannot disable super admin.' });
+        }
+
+        // Update in DB
+        user.isDisabled = isDisabled;
+        await user.save();
+
+        // Update in Firebase Auth
+        await admin.auth().updateUser(user.firebaseUid, {
+            disabled: isDisabled
+        });
+
+        res.json({ message: `User ${isDisabled ? 'disabled' : 'enabled'} successfully.`, user });
+    } catch (err) {
+        next(err);
+    }
+};
+
+/**
  * GET /api/admin/moderation/reports
  * Super Admin only - fetches all reported posts for review.
  */
@@ -239,6 +282,7 @@ module.exports = {
     getAdminAnalytics,
     createAdmin,
     getSystemUsers,
+    toggleUserStatus,
     getModerationReports,
     dismissReport,
     deleteReportedIssue
