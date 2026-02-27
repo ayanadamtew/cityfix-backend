@@ -42,4 +42,27 @@ const getMe = async (req, res) => {
     res.json(req.user);
 };
 
-module.exports = { register, getMe };
+/**
+ * POST /api/auth/fcm-token
+ * Updates the user's FCM token for push notifications.
+ */
+const updateFcmToken = async (req, res, next) => {
+    try {
+        const { fcmToken } = req.body;
+        if (!fcmToken) {
+            return res.status(400).json({ message: 'fcmToken is required.' });
+        }
+
+        const user = await User.findByIdAndUpdate(
+            req.user._id,
+            { fcmToken },
+            { new: true }
+        );
+
+        res.json({ message: 'FCM Token updated successfully', user });
+    } catch (err) {
+        next(err);
+    }
+};
+
+module.exports = { register, getMe, updateFcmToken };

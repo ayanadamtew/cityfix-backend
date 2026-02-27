@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { body } = require('express-validator');
 
-const { register, getMe } = require('../controllers/authController');
+const { register, getMe, updateFcmToken } = require('../controllers/authController');
 const requireAuth = require('../middlewares/requireAuth');
 const validate = require('../middlewares/validate');
 
@@ -23,6 +23,17 @@ router.post(
     ],
     validate,
     register
+);
+
+// POST /api/auth/fcm-token
+router.post(
+    '/auth/fcm-token',
+    requireAuth,
+    [
+        body('fcmToken').notEmpty().withMessage('fcmToken is required.')
+    ],
+    validate,
+    updateFcmToken
 );
 
 // GET /api/users/me
