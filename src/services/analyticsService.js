@@ -7,7 +7,7 @@ const Feedback = require('../models/Feedback');
 const getAnalytics = async (department = null) => {
     const filter = department ? { category: department } : {};
 
-    const [totalByStatus, totalByCategory, topUrgent, avgFeedbackResult, avgResTimeResult] = await Promise.all([
+    const [totalByStatus, totalByCategory, topUrgent, avgFeedbackResult, avgResTimeResult, locations] = await Promise.all([
         // Count by status
         IssueReport.aggregate([
             { $match: filter },
@@ -57,7 +57,11 @@ const getAnalytics = async (department = null) => {
                     }
                 }
             }
-        ])
+        ]),
+
+        // Basic location data for map
+        IssueReport.find({ ...filter, 'location.latitude': { $ne: null }, 'location.longitude': { $ne: null } })
+            .select('_id category status location urgencyCount createdAt')
     ]);
 
     // Pre-fill maps so frontend doesn't crash if a category has 0 issues
@@ -89,7 +93,8 @@ const getAnalytics = async (department = null) => {
         byCategory: categoryMap,
         topUrgentIssues: topUrgent,
         avgResolutionTimeDays,
-        avgFeedbackRating
+        avgFeedbackRating,
+        locations
     };
 };
 
