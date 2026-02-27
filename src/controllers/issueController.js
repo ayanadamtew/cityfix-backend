@@ -12,11 +12,19 @@ const { getIo } = require('../services/socketService');
  */
 const getIssues = async (req, res, next) => {
     try {
-        const { sort, kebele } = req.query;
+        const { sort, kebele, search } = req.query;
         const filter = {};
 
         if (kebele) {
             filter['location.kebele'] = kebele;
+        }
+
+        if (search) {
+            filter.$or = [
+                { description: { $regex: search, $options: 'i' } },
+                { category: { $regex: search, $options: 'i' } },
+                { 'location.kebele': { $regex: search, $options: 'i' } }
+            ];
         }
 
         const sortOption =
