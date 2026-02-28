@@ -20,6 +20,10 @@ const app = express();
 app.use(helmet());
 app.use(cors());
 app.use(morgan('dev'));
+app.use((req, res, next) => {
+    console.log(`[DEBUG] ${req.method} ${req.url}`);
+    next();
+});
 app.use(express.json());
 
 // ─── Routes ───────────────────────────────────────────────────────────────────

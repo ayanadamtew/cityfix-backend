@@ -65,4 +65,28 @@ const updateFcmToken = async (req, res, next) => {
     }
 };
 
-module.exports = { register, getMe, updateFcmToken };
+/**
+ * PUT /api/citizen/profile
+ * Updates the user's profile information (currently just fullName).
+ */
+const updateProfile = async (req, res, next) => {
+    console.log('[DEBUG] updateProfile controller reached');
+    try {
+        const { fullName } = req.body;
+        if (!fullName) {
+            return res.status(400).json({ message: 'fullName is required.' });
+        }
+
+        const user = await User.findByIdAndUpdate(
+            req.user._id,
+            { fullName },
+            { new: true }
+        );
+
+        res.json({ message: 'Profile updated successfully', user });
+    } catch (err) {
+        next(err);
+    }
+};
+
+module.exports = { register, getMe, updateFcmToken, updateProfile };
