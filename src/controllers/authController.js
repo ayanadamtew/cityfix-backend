@@ -4,6 +4,7 @@ const User = require('../models/User');
 /**
  * POST /api/auth/register
  * Called after Firebase Auth signup to persist user in MongoDB.
+ * Supports both phone-only users (no email) and email users.
  */
 const register = async (req, res, next) => {
     try {
@@ -13,6 +14,14 @@ const register = async (req, res, next) => {
 
         const { fullName, phoneNumber, role, department } = req.body;
 
+        // Derive email / phone from Firebase token or request body
+        let email = decodedToken.email || req.body.email || undefined;
+        if (email && email.endsWith('@cityfix.local')) {
+            email = undefined; // Do not store dummy emails used for phone+password auth
+        }
+        const phone =
+            decodedToken.phone_number || phoneNumber || undefined;
+
         // Prevent duplicate registrations
         const existing = await User.findOne({ firebaseUid: decodedToken.uid });
         if (existing) {
@@ -21,9 +30,9 @@ const register = async (req, res, next) => {
 
         const user = await User.create({
             firebaseUid: decodedToken.uid,
-            email: decodedToken.email,
+            email,
             fullName,
-            phoneNumber,
+            phoneNumber: phone,
             role: role || 'CITIZEN',
             department: role === 'SECTOR_ADMIN' ? department : undefined,
         });

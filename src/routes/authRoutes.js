@@ -11,6 +11,10 @@ router.post(
     '/auth/register',
     [
         body('fullName').notEmpty().withMessage('fullName is required.'),
+        body('email')
+            .optional({ nullable: true, checkFalsy: true })
+            .isEmail()
+            .withMessage('Invalid email.'),
         body('role')
             .optional()
             .isIn(['CITIZEN', 'SECTOR_ADMIN', 'SUPER_ADMIN'])

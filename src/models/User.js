@@ -18,7 +18,7 @@ const userSchema = new mongoose.Schema(
             default: 'CITIZEN',
         },
         fullName: { type: String, required: true, trim: true },
-        email: { type: String, required: true, lowercase: true, trim: true },
+        email: { type: String, required: false, sparse: true, lowercase: true, trim: true },
         phoneNumber: { type: String, trim: true },
         department: {
             type: String,
