@@ -4,15 +4,25 @@ const path = require('path');
 const initializeFirebase = () => {
     if (admin.apps.length) return; // already initialized
 
-    const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
-    if (!serviceAccountPath) {
-        throw new Error('FIREBASE_SERVICE_ACCOUNT_PATH is not set in environment variables.');
+    let credential;
+
+    if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+        credential = admin.credential.cert({
+            projectId: process.env.FIREBASE_PROJECT_ID,
+            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+            privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+        });
+    } else {
+        const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+        if (!serviceAccountPath) {
+            throw new Error('Firebase credentials are not set in environment variables.');
+        }
+        const serviceAccount = require(path.resolve(serviceAccountPath));
+        credential = admin.credential.cert(serviceAccount);
     }
 
-    const serviceAccount = require(path.resolve(serviceAccountPath));
-
     admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
+        credential,
     });
 
     console.log('Firebase Admin SDK initialized.');
