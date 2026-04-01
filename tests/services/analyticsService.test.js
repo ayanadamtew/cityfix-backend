@@ -15,8 +15,17 @@ const seedIssue = (citizenId, category, status, urgencyCount = 0) =>
 describe('analyticsService – getAnalytics', () => {
     it('returns empty maps when no issues exist', async () => {
         const stats = await getAnalytics();
-        expect(stats.byStatus).toEqual({});
-        expect(stats.byCategory).toEqual({});
+        expect(stats.byStatus).toEqual({
+            'Pending': 0,
+            'In Progress': 0,
+            'Resolved': 0
+        });
+        expect(stats.byCategory).toEqual({
+            'Water': 0,
+            'Waste': 0,
+            'Road': 0,
+            'Electricity': 0
+        });
         expect(stats.topUrgentIssues).toHaveLength(0);
     });
 

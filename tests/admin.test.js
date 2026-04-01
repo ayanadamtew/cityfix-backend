@@ -22,14 +22,14 @@ const seedIssue = (citizenId, assignedAdminId, overrides = {}) =>
 
 // ─── GET /api/admin/issues ────────────────────────────────────────────────────
 describe('GET /api/admin/issues', () => {
-    it('returns only assigned issues for SECTOR_ADMIN', async () => {
+    it('returns only issues in SECTOR_ADMIN department', async () => {
         const { user: admin, token } = await makeSectorAdmin({ department: 'Water' });
         const { user: citizen } = await makeCitizen();
         const { user: otherAdmin } = await makeSectorAdmin({ department: 'Road' });
 
-        await seedIssue(citizen._id, admin._id);           // assigned to our admin
-        await seedIssue(citizen._id, otherAdmin._id);      // assigned to other admin
-        await seedIssue(citizen._id, null);                // unassigned
+        await seedIssue(citizen._id, admin._id, { category: 'Water' });
+        await seedIssue(citizen._id, otherAdmin._id, { category: 'Road' });
+        await seedIssue(citizen._id, null, { category: 'Waste' });
 
         const res = await request(app)
             .get('/api/admin/issues')
@@ -37,7 +37,7 @@ describe('GET /api/admin/issues', () => {
 
         expect(res.statusCode).toBe(200);
         expect(res.body).toHaveLength(1);
-        expect(res.body[0].assignedAdminId._id).toBe(admin._id.toString());
+        expect(res.body[0].category).toBe('Water');
     });
 
     it('returns all issues for SUPER_ADMIN', async () => {
@@ -75,7 +75,7 @@ describe('PUT /api/admin/issues/:id/status', () => {
     it('SECTOR_ADMIN can update status of their own issue', async () => {
         const { user: admin, token } = await makeSectorAdmin({ department: 'Road' });
         const { user: citizen } = await makeCitizen();
-        const issue = await seedIssue(citizen._id, admin._id);
+        const issue = await seedIssue(citizen._id, admin._id, { category: 'Road' });
 
         const res = await request(app)
             .put(`/api/admin/issues/${issue._id}/status`)
@@ -86,26 +86,25 @@ describe('PUT /api/admin/issues/:id/status', () => {
         expect(res.body.status).toBe('In Progress');
     });
 
-    it('SUPER_ADMIN can update any issue status', async () => {
+    it('SUPER_ADMIN gets 403 when updating issue status', async () => {
         const { token } = await makeSuperAdmin();
         const { user: citizen } = await makeCitizen();
         const { user: admin } = await makeSectorAdmin({ department: 'Electricity' });
-        const issue = await seedIssue(citizen._id, admin._id);
+        const issue = await seedIssue(citizen._id, admin._id, { category: 'Electricity' });
 
         const res = await request(app)
             .put(`/api/admin/issues/${issue._id}/status`)
             .set('Authorization', token)
             .send({ status: 'Resolved' });
 
-        expect(res.statusCode).toBe(200);
-        expect(res.body.status).toBe('Resolved');
+        expect(res.statusCode).toBe(403);
     });
 
     it('SECTOR_ADMIN cannot update an issue not assigned to them', async () => {
         const { token } = await makeSectorAdmin({ department: 'Water' });
         const { user: citizen } = await makeCitizen();
         const { user: otherAdmin } = await makeSectorAdmin({ department: 'Waste' });
-        const issue = await seedIssue(citizen._id, otherAdmin._id);
+        const issue = await seedIssue(citizen._id, otherAdmin._id, { category: 'Waste' });
 
         const res = await request(app)
             .put(`/api/admin/issues/${issue._id}/status`)
@@ -118,7 +117,7 @@ describe('PUT /api/admin/issues/:id/status', () => {
     it('returns 422 for invalid status value', async () => {
         const { user: admin, token } = await makeSectorAdmin({ department: 'Water' });
         const { user: citizen } = await makeCitizen();
-        const issue = await seedIssue(citizen._id, admin._id);
+        const issue = await seedIssue(citizen._id, admin._id, { category: 'Water' });
 
         const res = await request(app)
             .put(`/api/admin/issues/${issue._id}/status`)
@@ -160,12 +159,12 @@ describe('GET /api/admin/analytics', () => {
         expect(res.body.byCategory.Road).toBe(1);
     });
 
-    it('returns 403 for SECTOR_ADMIN', async () => {
+    it('returns 200 for SECTOR_ADMIN', async () => {
         const { token } = await makeSectorAdmin();
         const res = await request(app)
             .get('/api/admin/analytics')
             .set('Authorization', token);
-        expect(res.statusCode).toBe(403);
+        expect(res.statusCode).toBe(200);
     });
 
     it('returns 403 for CITIZEN', async () => {
