@@ -3,6 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const swaggerUi = require('swagger-ui-express');
+const fs = require('fs');
 
 const connectDB = require('./config/db');
 const { initializeFirebase } = require('./config/firebase');
@@ -25,6 +27,15 @@ app.use((req, res, next) => {
     next();
 });
 app.use(express.json());
+
+// ─── Swagger Documentation ──────────────────────────────────────────────────
+let swaggerDocument;
+try {
+    swaggerDocument = JSON.parse(fs.readFileSync('./swagger.json', 'utf8'));
+    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+} catch (err) {
+    console.log('[Swagger] swagger.json not found. Run `npm run swagger` first.');
+}
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api', authRoutes);          // /api/auth/register  /api/users/me
