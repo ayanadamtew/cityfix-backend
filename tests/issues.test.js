@@ -25,23 +25,24 @@ const seedIssue = async (citizenId, overrides = {}) =>
 // ─── GET /api/issues ──────────────────────────────────────────────────────────
 describe('GET /api/issues', () => {
     it('returns empty array when no issues exist', async () => {
-        const res = await request(app).get('/api/issues');
+        const { token } = await makeCitizen();
+        const res = await request(app).get('/api/issues').set('Authorization', token);
         expect(res.statusCode).toBe(200);
         expect(res.body).toEqual([]);
     });
 
     it('returns all issues', async () => {
-        const { user } = await makeCitizen();
+        const { user, token } = await makeCitizen();
         await seedIssue(user._id);
         await seedIssue(user._id, { category: 'Road' });
 
-        const res = await request(app).get('/api/issues');
+        const res = await request(app).get('/api/issues').set('Authorization', token);
         expect(res.statusCode).toBe(200);
         expect(res.body).toHaveLength(2);
     });
 
     it('filters by kebele', async () => {
-        const { user } = await makeCitizen();
+        const { user, token } = await makeCitizen();
         await seedIssue(user._id, { description: 'Issue in 05' });
         await IssueReport.create({
             citizenId: user._id,
@@ -50,20 +51,25 @@ describe('GET /api/issues', () => {
             location: { kebele: 'Kebele 07' },
         });
 
-        const res = await request(app).get('/api/issues?kebele=Kebele 05');
+        const res = await request(app).get('/api/issues?kebele=Kebele 05').set('Authorization', token);
         expect(res.statusCode).toBe(200);
         expect(res.body).toHaveLength(1);
         expect(res.body[0].description).toBe('Issue in 05');
     });
 
     it('sorts by urgency when sort=urgent', async () => {
-        const { user } = await makeCitizen();
+        const { user, token } = await makeCitizen();
         await seedIssue(user._id, { description: 'Low urgency', urgencyCount: 1 });
         await seedIssue(user._id, { description: 'High urgency', urgencyCount: 10 });
 
-        const res = await request(app).get('/api/issues?sort=urgent');
+        const res = await request(app).get('/api/issues?sort=urgent').set('Authorization', token);
         expect(res.statusCode).toBe(200);
         expect(res.body[0].description).toBe('High urgency');
+    });
+
+    it('returns 401 without auth token', async () => {
+        const res = await request(app).get('/api/issues');
+        expect(res.statusCode).toBe(401);
     });
 });
 
@@ -144,19 +150,27 @@ describe('POST /api/issues', () => {
 // ─── GET /api/issues/:id ──────────────────────────────────────────────────────
 describe('GET /api/issues/:id', () => {
     it('returns issue with empty comments array', async () => {
-        const { user } = await makeCitizen();
+        const { user, token } = await makeCitizen();
         const issue = await seedIssue(user._id);
 
-        const res = await request(app).get(`/api/issues/${issue._id}`);
+        const res = await request(app).get(`/api/issues/${issue._id}`).set('Authorization', token);
         expect(res.statusCode).toBe(200);
         expect(res.body.issue._id).toBe(issue._id.toString());
         expect(res.body.comments).toEqual([]);
     });
 
     it('returns 404 for a nonexistent issue', async () => {
+        const { token } = await makeCitizen();
         const fakeId = new mongoose.Types.ObjectId();
-        const res = await request(app).get(`/api/issues/${fakeId}`);
+        const res = await request(app).get(`/api/issues/${fakeId}`).set('Authorization', token);
         expect(res.statusCode).toBe(404);
+    });
+
+    it('returns 401 without auth token', async () => {
+        const { user } = await makeCitizen();
+        const issue = await seedIssue(user._id);
+        const res = await request(app).get(`/api/issues/${issue._id}`);
+        expect(res.statusCode).toBe(401);
     });
 });
 

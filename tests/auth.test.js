@@ -23,6 +23,13 @@ describe('POST /api/auth/register', () => {
         expect(res.body.user.role).toBe('CITIZEN');
     });
 
+    it('returns 401 without auth token', async () => {
+        const res = await request(app)
+            .post('/api/auth/register')
+            .send({ fullName: 'No Token User' });
+        expect(res.statusCode).toBe(401);
+    });
+
     it('returns 200 and existing user if already registered', async () => {
         // Register once
         await request(app)

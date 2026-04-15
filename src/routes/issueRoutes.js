@@ -17,8 +17,8 @@ const requireAuth = require('../middlewares/requireAuth');
 const requireRole = require('../middlewares/requireRole');
 const validate = require('../middlewares/validate');
 
-// GET /api/issues  – public feed
-router.get('/', getIssues);
+// GET /api/issues  – requires authentication
+router.get('/', requireAuth, getIssues);
 
 // GET /api/issues/mine – citizen's own reports (auth required)
 router.get('/mine', requireAuth, requireRole(['CITIZEN']), getMyIssues);
@@ -40,8 +40,8 @@ router.post(
     createIssue
 );
 
-// GET /api/issues/:id – single issue with comments
-router.get('/:id', getIssueById);
+// GET /api/issues/:id – single issue with comments (auth required)
+router.get('/:id', requireAuth, getIssueById);
 
 // PUT /api/issues/:id – citizen edits their pending report
 router.put(

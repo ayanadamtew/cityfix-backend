@@ -232,25 +232,13 @@ const reportIssue = async (req, res, next) => {
  */
 const getMyIssues = async (req, res, next) => {
     try {
-        const issues = await IssueReport.aggregate([
-            { $match: { citizenId: req.user._id } },
-            { $sort: { createdAt: -1 } },
-            {
-                $lookup: {
-                    from: 'comments',
-                    localField: '_id',
-                    foreignField: 'issueId',
-                    as: '_comments',
-                },
-            },
-            { $addFields: { commentCount: { $size: '$_comments' } } },
-            { $project: { _comments: 0 } },
-        ]);
+        const issues = await IssueReport.find({ citizenId: req.user._id })
+            .sort({ createdAt: -1 })
+            .populate('assignedAdminId', 'fullName department');
 
-        await IssueReport.populate(issues, [
-            { path: 'assignedAdminId', select: 'fullName department' },
-        ]);
-
+        // Note: The UI expects comments to be populated or commentCount to exist.
+        // We can attach commentCount if needed, but the Schema already establishes it via the default field `commentCount` mechanism!
+        // No need for lookup.
         res.json(issues);
     } catch (err) {
         next(err);

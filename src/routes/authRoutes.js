@@ -7,6 +7,8 @@ const requireAuth = require('../middlewares/requireAuth');
 const validate = require('../middlewares/validate');
 
 // POST /api/auth/register
+// NOTE: We do NOT use requireAuth here because the user doesn't exist in DB yet.
+// The controller verifies the Firebase token directly to extract the UID.
 router.post(
     '/auth/register',
     [
