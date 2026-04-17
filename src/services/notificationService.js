@@ -1,15 +1,17 @@
 const { admin } = require('../config/firebase');
-const User = require('../models/User');
+const { User } = require('../models');
 
 /**
  * Send a push notification to the citizen when their issue is resolved.
  * Gracefully no-ops if the citizen has no FCM token stored.
  *
- * @param {import('../models/IssueReport')} issue - The resolved IssueReport document
+ * @param {import('../models/IssueReport').default} issue - The resolved IssueReport instance
  */
 const sendResolutionNotification = async (issue) => {
     try {
-        const citizen = await User.findById(issue.citizenId).select('fcmToken fullName');
+        const citizen = await User.findByPk(issue.citizenId, {
+            attributes: ['id', 'fcmToken', 'fullName'],
+        });
         if (!citizen?.fcmToken) {
             // Citizen hasn't granted push permission yet – skip silently
             return;
@@ -22,13 +24,13 @@ const sendResolutionNotification = async (issue) => {
                 body: `Your ${issue.category} report has been resolved. Tap to rate the service.`,
             },
             data: {
-                issueId: issue._id.toString(),
+                issueId: issue.id.toString(),
                 screen: 'MyReports',
             },
         };
 
         await admin.messaging().send(message);
-        console.log(`[Notification] Sent resolution push to citizen ${citizen._id}`);
+        console.log(`[Notification] Sent resolution push to citizen ${citizen.id}`);
     } catch (err) {
         // Never let a failed push break the status-update response
         console.error('[Notification] Failed to send push notification:', err.message);

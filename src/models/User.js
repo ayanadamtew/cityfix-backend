@@ -1,37 +1,63 @@
-const mongoose = require('mongoose');
+const { DataTypes, Model } = require('sequelize');
+const sequelize = require('../config/db');
 
 const DEPARTMENTS = ['Water', 'Waste', 'Road', 'Electricity'];
 const ROLES = ['CITIZEN', 'SECTOR_ADMIN', 'SUPER_ADMIN'];
 
-const userSchema = new mongoose.Schema(
+class User extends Model {}
+
+User.init(
     {
+        id: {
+            type: DataTypes.UUID,
+            defaultValue: DataTypes.UUIDV4,
+            primaryKey: true,
+        },
         firebaseUid: {
-            type: String,
-            required: true,
+            type: DataTypes.STRING,
+            allowNull: false,
             unique: true,
-            index: true,
         },
         role: {
-            type: String,
-            enum: ROLES,
-            required: true,
-            default: 'CITIZEN',
+            type: DataTypes.ENUM(...ROLES),
+            allowNull: false,
+            defaultValue: 'CITIZEN',
         },
-        fullName: { type: String, required: true, trim: true },
-        email: { type: String, required: false, sparse: true, lowercase: true, trim: true },
-        phoneNumber: { type: String, trim: true },
+        fullName: {
+            type: DataTypes.STRING,
+            allowNull: false,
+        },
+        email: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            unique: 'users_email_unique',
+            validate: { isEmail: true },
+        },
+        phoneNumber: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
         department: {
-            type: String,
-            enum: DEPARTMENTS,
-            required: function () {
-                return this.role === 'SECTOR_ADMIN';
-            },
+            type: DataTypes.ENUM(...DEPARTMENTS),
+            allowNull: true,
         },
-        // Firebase Cloud Messaging token for push notifications (set by mobile on login)
-        fcmToken: { type: String, default: null },
-        isDisabled: { type: Boolean, default: false },
+        fcmToken: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            defaultValue: null,
+        },
+        isDisabled: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false,
+        },
     },
-    { timestamps: true }
+    {
+        sequelize,
+        modelName: 'User',
+        tableName: 'users',
+        timestamps: true,
+    }
 );
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = User;

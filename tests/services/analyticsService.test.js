@@ -1,7 +1,7 @@
 const db = require('../helpers/dbSetup');
 const { makeCitizen } = require('../helpers/authFactory');
 const { getAnalytics } = require('../../src/services/analyticsService');
-const IssueReport = require('../../src/models/IssueReport');
+const { IssueReport } = require('../../src/models');
 
 jest.mock('firebase-admin');
 
@@ -31,9 +31,9 @@ describe('analyticsService – getAnalytics', () => {
 
     it('counts issues by status correctly', async () => {
         const { user } = await makeCitizen();
-        await seedIssue(user._id, 'Water', 'Pending');
-        await seedIssue(user._id, 'Road', 'Pending');
-        await seedIssue(user._id, 'Waste', 'Resolved');
+        await seedIssue(user.id, 'Water', 'Pending');
+        await seedIssue(user.id, 'Road', 'Pending');
+        await seedIssue(user.id, 'Waste', 'Resolved');
 
         const stats = await getAnalytics();
         expect(stats.byStatus['Pending']).toBe(2);
@@ -42,9 +42,9 @@ describe('analyticsService – getAnalytics', () => {
 
     it('counts issues by category correctly', async () => {
         const { user } = await makeCitizen();
-        await seedIssue(user._id, 'Water', 'Pending');
-        await seedIssue(user._id, 'Water', 'Pending');
-        await seedIssue(user._id, 'Road', 'Pending');
+        await seedIssue(user.id, 'Water', 'Pending');
+        await seedIssue(user.id, 'Water', 'Pending');
+        await seedIssue(user.id, 'Road', 'Pending');
 
         const stats = await getAnalytics();
         expect(stats.byCategory['Water']).toBe(2);
@@ -55,10 +55,10 @@ describe('analyticsService – getAnalytics', () => {
         const { user } = await makeCitizen();
         // Create 6 pending issues with varying urgency
         for (let i = 1; i <= 6; i++) {
-            await seedIssue(user._id, 'Water', 'Pending', i * 10);
+            await seedIssue(user.id, 'Water', 'Pending', i * 10);
         }
         // Resolved issue should NOT appear in top urgent
-        await seedIssue(user._id, 'Road', 'Resolved', 999);
+        await seedIssue(user.id, 'Road', 'Resolved', 999);
 
         const stats = await getAnalytics();
         expect(stats.topUrgentIssues).toHaveLength(5);

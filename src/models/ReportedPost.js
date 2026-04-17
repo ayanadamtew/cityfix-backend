@@ -1,24 +1,28 @@
-const mongoose = require('mongoose');
+const { DataTypes, Model } = require('sequelize');
+const sequelize = require('../config/db');
 
-const reportedPostSchema = new mongoose.Schema(
+class ReportedPost extends Model {}
+
+ReportedPost.init(
     {
-        issueId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'IssueReport',
-            required: true,
+        id: {
+            type: DataTypes.UUID,
+            defaultValue: DataTypes.UUIDV4,
+            primaryKey: true,
         },
-        citizenId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
-            required: true,
-        },
+        // issueId and citizenId are added as FK associations in models/index.js
         reason: {
-            type: String,
-            required: true,
-            trim: true,
+            type: DataTypes.TEXT,
+            allowNull: false,
         },
     },
-    { timestamps: { createdAt: true, updatedAt: false } }
+    {
+        sequelize,
+        modelName: 'ReportedPost',
+        tableName: 'reported_posts',
+        timestamps: true,
+        updatedAt: false,
+    }
 );
 
-module.exports = mongoose.model('ReportedPost', reportedPostSchema);
+module.exports = ReportedPost;

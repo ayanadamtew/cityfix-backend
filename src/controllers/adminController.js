@@ -1,26 +1,30 @@
-const IssueReport = require('../models/IssueReport');
-const User = require('../models/User'); // Added for admin creation
+const { Op } = require('sequelize');
+const { IssueReport, User, ReportedPost, Comment, Feedback } = require('../models');
 const { getAnalytics } = require('../services/analyticsService');
 const { sendResolutionNotification } = require('../services/notificationService');
-const { admin } = require('../config/firebase'); // Added for admin creation
+const { admin } = require('../config/firebase');
 const { getIo } = require('../services/socketService');
 
 /**
  * GET /api/admin/issues
- * Sector Admin: fetch issues assigned to them.
+ * Sector Admin: fetch issues assigned to them (by category/department).
  * Super Admin: fetch all issues.
  */
 const getAdminIssues = async (req, res, next) => {
     try {
-        const filter =
+        const where =
             req.user.role === 'SUPER_ADMIN'
                 ? {}
                 : { category: req.user.department };
 
-        const issues = await IssueReport.find(filter)
-            .sort({ createdAt: -1 })
-            .populate('citizenId', 'fullName email phoneNumber')
-            .populate('assignedAdminId', 'fullName department');
+        const issues = await IssueReport.findAll({
+            where,
+            order: [['createdAt', 'DESC']],
+            include: [
+                { model: User, as: 'citizen', attributes: ['id', 'fullName', 'email', 'phoneNumber'] },
+                { model: User, as: 'assignedAdmin', attributes: ['id', 'fullName', 'department'] },
+            ],
+        });
 
         res.json(issues);
     } catch (err) {
@@ -31,13 +35,13 @@ const getAdminIssues = async (req, res, next) => {
 /**
  * PUT /api/admin/issues/:id/status
  * Update issue status to 'In Progress' or 'Resolved'.
- * Sector Admin can only update issues assigned to them.
  */
 const updateIssueStatus = async (req, res, next) => {
     try {
         if (req.user.role === 'SUPER_ADMIN') {
             return res.status(403).json({
-                message: 'Forbidden: Super Admins can only view issues, not edit their status. Please leave this to the assigned Sector Admin.',
+                message:
+                    'Forbidden: Super Admins can only view issues, not edit their status. Please leave this to the assigned Sector Admin.',
             });
         }
 
@@ -50,33 +54,28 @@ const updateIssueStatus = async (req, res, next) => {
             });
         }
 
-        const filter =
+        const where =
             req.user.role === 'SUPER_ADMIN'
-                ? { _id: req.params.id }
-                : { _id: req.params.id, category: req.user.department };
+                ? { id: req.params.id }
+                : { id: req.params.id, category: req.user.department };
 
-        const issue = await IssueReport.findOneAndUpdate(
-            filter,
-            { status },
-            { returnDocument: 'after' }
-        );
-
+        const issue = await IssueReport.findOne({ where });
         if (!issue) {
-            return res
-                .status(404)
-                .json({ message: 'Issue not found or not assigned to you.' });
+            return res.status(404).json({ message: 'Issue not found or not assigned to you.' });
         }
+
+        await issue.update({ status });
 
         // Fire push notification in background when issue is resolved
         if (status === 'Resolved') {
-            sendResolutionNotification(issue).catch(() => {/* already logged inside */ });
+            sendResolutionNotification(issue).catch(() => {/* already logged inside */});
         }
 
         try {
             const io = getIo();
             io.emit('issue_status_changed', {
-                issueId: issue._id.toString(),
-                status: issue.status
+                issueId: issue.id,
+                status: issue.status,
             });
         } catch (err) {
             console.error('[Socket.io] Failed to emit issue_status_changed', err);
@@ -120,7 +119,7 @@ const createAdmin = async (req, res, next) => {
         }
 
         // Check if user already exists
-        const existing = await User.findOne({ email });
+        const existing = await User.findOne({ where: { email } });
         if (existing) {
             return res.status(400).json({ message: 'User with this email already exists.' });
         }
@@ -135,7 +134,7 @@ const createAdmin = async (req, res, next) => {
         // Set custom claims (optional but good practice)
         await admin.auth().setCustomUserClaims(firebaseUser.uid, { role: 'SECTOR_ADMIN' });
 
-        // Create user in MongoDB
+        // Create user in PostgreSQL
         const user = await User.create({
             firebaseUid: firebaseUser.uid,
             email,
@@ -156,8 +155,14 @@ const createAdmin = async (req, res, next) => {
  */
 const getSystemUsers = async (req, res, next) => {
     try {
-        const admins = await User.find({ role: { $in: ['SECTOR_ADMIN', 'SUPER_ADMIN'] } }).sort({ createdAt: -1 });
-        const citizens = await User.find({ role: 'CITIZEN' }).sort({ createdAt: -1 });
+        const admins = await User.findAll({
+            where: { role: { [Op.in]: ['SECTOR_ADMIN', 'SUPER_ADMIN'] } },
+            order: [['createdAt', 'DESC']],
+        });
+        const citizens = await User.findAll({
+            where: { role: 'CITIZEN' },
+            order: [['createdAt', 'DESC']],
+        });
 
         res.json({ admins, citizens });
     } catch (err) {
@@ -178,7 +183,7 @@ const toggleUserStatus = async (req, res, next) => {
             return res.status(400).json({ message: 'isDisabled must be a boolean.' });
         }
 
-        const user = await User.findById(userId);
+        const user = await User.findByPk(userId);
         if (!user) {
             return res.status(404).json({ message: 'User not found.' });
         }
@@ -187,14 +192,10 @@ const toggleUserStatus = async (req, res, next) => {
             return res.status(403).json({ message: 'Cannot disable super admin.' });
         }
 
-        // Update in DB
-        user.isDisabled = isDisabled;
-        await user.save();
+        await user.update({ isDisabled });
 
         // Update in Firebase Auth
-        await admin.auth().updateUser(user.firebaseUid, {
-            disabled: isDisabled
-        });
+        await admin.auth().updateUser(user.firebaseUid, { disabled: isDisabled });
 
         res.json({ message: `User ${isDisabled ? 'disabled' : 'enabled'} successfully.`, user });
     } catch (err) {
@@ -208,17 +209,17 @@ const toggleUserStatus = async (req, res, next) => {
  */
 const getModerationReports = async (req, res, next) => {
     try {
-        const ReportedPost = require('../models/ReportedPost');
-        const reports = await ReportedPost.find()
-            .sort({ createdAt: -1 })
-            .populate('citizenId', 'fullName email role')
-            .populate({
-                path: 'issueId',
-                populate: {
-                    path: 'citizenId',
-                    select: 'fullName email',
+        const reports = await ReportedPost.findAll({
+            order: [['createdAt', 'DESC']],
+            include: [
+                { model: User, as: 'reporter', attributes: ['id', 'fullName', 'email', 'role'] },
+                {
+                    model: IssueReport,
+                    as: 'issue',
+                    include: [{ model: User, as: 'citizen', attributes: ['id', 'fullName', 'email'] }],
                 },
-            });
+            ],
+        });
         res.json(reports);
     } catch (err) {
         next(err);
@@ -231,13 +232,14 @@ const getModerationReports = async (req, res, next) => {
  */
 const dismissReport = async (req, res, next) => {
     try {
-        const ReportedPost = require('../models/ReportedPost');
         const reportId = req.params.id;
-        const report = await ReportedPost.findByIdAndDelete(reportId);
+        const report = await ReportedPost.findByPk(reportId);
 
         if (!report) {
             return res.status(404).json({ message: 'Report not found.' });
         }
+
+        await report.destroy();
         res.json({ message: 'Report dismissed.' });
     } catch (err) {
         next(err);
@@ -250,25 +252,20 @@ const dismissReport = async (req, res, next) => {
  */
 const deleteReportedIssue = async (req, res, next) => {
     try {
-        const ReportedPost = require('../models/ReportedPost');
-        const Comment = require('../models/Comment');
-        const Feedback = require('../models/Feedback');
         const reportId = req.params.id;
 
-        const report = await ReportedPost.findById(reportId);
+        const report = await ReportedPost.findByPk(reportId);
         if (!report) {
             return res.status(404).json({ message: 'Report not found.' });
         }
 
         const issueId = report.issueId;
 
-        // Delete the issue itself
-        await IssueReport.findByIdAndDelete(issueId);
-
-        // Delete associated records to keep DB clean
-        await Comment.deleteMany({ issueId });
-        await Feedback.deleteMany({ issueId });
-        await ReportedPost.deleteMany({ issueId });
+        // Cascade deletes — associations have onDelete: CASCADE, but explicit is safer
+        await Comment.destroy({ where: { issueId } });
+        await Feedback.destroy({ where: { issueId } });
+        await ReportedPost.destroy({ where: { issueId } });
+        await IssueReport.destroy({ where: { id: issueId } });
 
         res.json({ message: 'Issue and associated data deleted.' });
     } catch (err) {
@@ -285,5 +282,5 @@ module.exports = {
     toggleUserStatus,
     getModerationReports,
     dismissReport,
-    deleteReportedIssue
+    deleteReportedIssue,
 };

@@ -1,29 +1,31 @@
 /**
- * In-memory MongoDB setup for tests.
- * Uses mongodb-memory-server so no local MongoDB is required.
+ * Sequelize + SQLite in-memory database setup for tests.
+ * No external PostgreSQL required — tests are fully self-contained.
  */
-const mongoose = require('mongoose');
-const { MongoMemoryServer } = require('mongodb-memory-server');
+// sequelize instance is now properly initialized as SQLite in src/config/db.js
+// based on NODE_ENV === 'test'
+const sequelize = require('../../src/config/db');
 
-let mongod;
+// Ensure models are registered to this instance
+require('../../src/models');
 
 const connect = async () => {
-    mongod = await MongoMemoryServer.create();
-    const uri = mongod.getUri();
-    await mongoose.connect(uri);
+    await sequelize.sync({ force: true });
 };
 
 const closeDatabase = async () => {
-    await mongoose.connection.dropDatabase();
-    await mongoose.connection.close();
-    if (mongod) await mongod.stop();
+    await sequelize.drop();
+    await sequelize.close();
 };
 
 const clearDatabase = async () => {
-    const collections = mongoose.connection.collections;
-    for (const key in collections) {
-        await collections[key].deleteMany({});
+    // Disable FK checks for SQLite, drop all data in reverse order
+    await sequelize.query('PRAGMA foreign_keys = OFF;').catch(() => {});
+    const models = Object.values(sequelize.models);
+    for (const model of models) {
+        await model.destroy({ where: {}, truncate: true, cascade: true }).catch(() => {});
     }
+    await sequelize.query('PRAGMA foreign_keys = ON;').catch(() => {});
 };
 
 module.exports = { connect, closeDatabase, clearDatabase };

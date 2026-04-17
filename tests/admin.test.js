@@ -1,15 +1,18 @@
 const request = require('supertest');
-const mongoose = require('mongoose');
 const app = require('../src/app');
 const db = require('./helpers/dbSetup');
 const { makeCitizen, makeSectorAdmin, makeSuperAdmin } = require('./helpers/authFactory');
-const IssueReport = require('../src/models/IssueReport');
+const { IssueReport } = require('../src/models');
 
 jest.mock('firebase-admin');
 
 beforeAll(() => db.connect());
 afterEach(() => db.clearDatabase());
 afterAll(() => db.closeDatabase());
+
+const fakeId = () => require('crypto').randomUUID
+    ? require('crypto').randomUUID()
+    : '00000000-0000-0000-0000-000000000000';
 
 const seedIssue = (citizenId, assignedAdminId, overrides = {}) =>
     IssueReport.create({
@@ -27,9 +30,9 @@ describe('GET /api/admin/issues', () => {
         const { user: citizen } = await makeCitizen();
         const { user: otherAdmin } = await makeSectorAdmin({ department: 'Road' });
 
-        await seedIssue(citizen._id, admin._id, { category: 'Water' });
-        await seedIssue(citizen._id, otherAdmin._id, { category: 'Road' });
-        await seedIssue(citizen._id, null, { category: 'Waste' });
+        await seedIssue(citizen.id, admin.id, { category: 'Water' });
+        await seedIssue(citizen.id, otherAdmin.id, { category: 'Road' });
+        await seedIssue(citizen.id, null, { category: 'Waste' });
 
         const res = await request(app)
             .get('/api/admin/issues')
@@ -45,8 +48,8 @@ describe('GET /api/admin/issues', () => {
         const { user: citizen } = await makeCitizen();
         const { user: admin } = await makeSectorAdmin({ department: 'Waste' });
 
-        await seedIssue(citizen._id, admin._id);
-        await seedIssue(citizen._id, null);
+        await seedIssue(citizen.id, admin.id);
+        await seedIssue(citizen.id, null);
 
         const res = await request(app)
             .get('/api/admin/issues')
@@ -75,10 +78,10 @@ describe('PUT /api/admin/issues/:id/status', () => {
     it('SECTOR_ADMIN can update status of their own issue', async () => {
         const { user: admin, token } = await makeSectorAdmin({ department: 'Road' });
         const { user: citizen } = await makeCitizen();
-        const issue = await seedIssue(citizen._id, admin._id, { category: 'Road' });
+        const issue = await seedIssue(citizen.id, admin.id, { category: 'Road' });
 
         const res = await request(app)
-            .put(`/api/admin/issues/${issue._id}/status`)
+            .put(`/api/admin/issues/${issue.id}/status`)
             .set('Authorization', token)
             .send({ status: 'In Progress' });
 
@@ -90,10 +93,10 @@ describe('PUT /api/admin/issues/:id/status', () => {
         const { token } = await makeSuperAdmin();
         const { user: citizen } = await makeCitizen();
         const { user: admin } = await makeSectorAdmin({ department: 'Electricity' });
-        const issue = await seedIssue(citizen._id, admin._id, { category: 'Electricity' });
+        const issue = await seedIssue(citizen.id, admin.id, { category: 'Electricity' });
 
         const res = await request(app)
-            .put(`/api/admin/issues/${issue._id}/status`)
+            .put(`/api/admin/issues/${issue.id}/status`)
             .set('Authorization', token)
             .send({ status: 'Resolved' });
 
@@ -104,10 +107,10 @@ describe('PUT /api/admin/issues/:id/status', () => {
         const { token } = await makeSectorAdmin({ department: 'Water' });
         const { user: citizen } = await makeCitizen();
         const { user: otherAdmin } = await makeSectorAdmin({ department: 'Waste' });
-        const issue = await seedIssue(citizen._id, otherAdmin._id, { category: 'Waste' });
+        const issue = await seedIssue(citizen.id, otherAdmin.id, { category: 'Waste' });
 
         const res = await request(app)
-            .put(`/api/admin/issues/${issue._id}/status`)
+            .put(`/api/admin/issues/${issue.id}/status`)
             .set('Authorization', token)
             .send({ status: 'In Progress' });
 
@@ -117,10 +120,10 @@ describe('PUT /api/admin/issues/:id/status', () => {
     it('returns 422 for invalid status value', async () => {
         const { user: admin, token } = await makeSectorAdmin({ department: 'Water' });
         const { user: citizen } = await makeCitizen();
-        const issue = await seedIssue(citizen._id, admin._id, { category: 'Water' });
+        const issue = await seedIssue(citizen.id, admin.id, { category: 'Water' });
 
         const res = await request(app)
-            .put(`/api/admin/issues/${issue._id}/status`)
+            .put(`/api/admin/issues/${issue.id}/status`)
             .set('Authorization', token)
             .send({ status: 'Foo' });
 
@@ -129,9 +132,8 @@ describe('PUT /api/admin/issues/:id/status', () => {
 
     it('returns 403 for CITIZEN role', async () => {
         const { token } = await makeCitizen();
-        const fakeId = new mongoose.Types.ObjectId();
         const res = await request(app)
-            .put(`/api/admin/issues/${fakeId}/status`)
+            .put(`/api/admin/issues/${fakeId()}/status`)
             .set('Authorization', token)
             .send({ status: 'In Progress' });
         expect(res.statusCode).toBe(403);
@@ -144,8 +146,8 @@ describe('GET /api/admin/analytics', () => {
         const { token } = await makeSuperAdmin();
         const { user: citizen } = await makeCitizen();
 
-        await seedIssue(citizen._id, null, { category: 'Water', status: 'Pending' });
-        await seedIssue(citizen._id, null, { category: 'Road', status: 'Resolved' });
+        await seedIssue(citizen.id, null, { category: 'Water', status: 'Pending' });
+        await seedIssue(citizen.id, null, { category: 'Road', status: 'Resolved' });
 
         const res = await request(app)
             .get('/api/admin/analytics')

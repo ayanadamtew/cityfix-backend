@@ -1,62 +1,49 @@
-const IssueReport = require('../models/IssueReport');
-const Comment = require('../models/Comment');
-const ReportedPost = require('../models/ReportedPost');
-const Feedback = require('../models/Feedback');
+const { Op } = require('sequelize');
+const { IssueReport, Comment, ReportedPost, Feedback, User } = require('../models');
 const { findAdminByCategory } = require('../services/routingService');
 const { toggleUrgencyVote } = require('../services/voteService');
 const { getIo } = require('../services/socketService');
 
 /**
  * GET /api/issues
- * Public feed. Supports ?sort=recent|urgent and ?kebele=<location>
+ * Public feed. Supports ?sort=recent|urgent and ?kebele=<location> and ?search=<text>
  */
 const getIssues = async (req, res, next) => {
     try {
         const { sort, kebele, search } = req.query;
-        const filter = {};
+        const where = {};
 
         if (kebele) {
-            filter['location.kebele'] = kebele;
+            where.kebele = kebele;
         }
 
         if (search) {
-            filter.$or = [
-                { description: { $regex: search, $options: 'i' } },
-                { category: { $regex: search, $options: 'i' } },
-                { 'location.kebele': { $regex: search, $options: 'i' } }
+            where[Op.or] = [
+                { description: { [Op.iLike]: `%${search}%` } },
+                { category: { [Op.iLike]: `%${search}%` } },
+                { kebele: { [Op.iLike]: `%${search}%` } },
             ];
         }
 
-        const sortOption =
-            sort === 'urgent' ? { urgencyCount: -1 } : { createdAt: -1 };
+        const order = sort === 'urgent'
+            ? [['urgencyCount', 'DESC']]
+            : [['createdAt', 'DESC']];
 
-        const issues = await IssueReport.aggregate([
-            { $match: filter },
-            { $sort: sortOption },
-            {
-                $lookup: {
-                    from: 'comments',
-                    localField: '_id',
-                    foreignField: 'issueId',
-                    as: '_comments',
-                },
-            },
-            { $addFields: { commentCount: { $size: '$_comments' } } },
-            { $project: { _comments: 0 } },
-        ]);
-
-        // Populate citizenId and assignedAdminId manually after aggregation
-        await IssueReport.populate(issues, [
-            { path: 'citizenId', select: 'fullName' },
-            { path: 'assignedAdminId', select: 'fullName department' },
-        ]);
+        const issues = await IssueReport.findAll({
+            where,
+            order,
+            include: [
+                { model: User, as: 'citizen', attributes: ['id', 'fullName'] },
+                { model: User, as: 'assignedAdmin', attributes: ['id', 'fullName', 'department'] },
+                { model: Comment, as: 'comments', attributes: [] }, // for count only
+            ],
+        });
 
         res.json(issues);
     } catch (err) {
         next(err);
     }
 };
-
 
 /**
  * POST /api/issues
@@ -70,27 +57,31 @@ const createIssue = async (req, res, next) => {
         const assignedAdminId = await findAdminByCategory(category);
 
         const issue = await IssueReport.create({
-            citizenId: req.user._id,
-            assignedAdminId,
+            citizenId: req.user.id,
+            assignedAdminId: assignedAdminId || null,
             category,
             description,
-            photoUrl,
-            location,
-            // Offline sync: preserve original capture time if provided
-            draftedAt: draftedAt ? new Date(draftedAt) : undefined,
+            photoUrl: photoUrl || null,
+            latitude: location?.latitude ?? null,
+            longitude: location?.longitude ?? null,
+            address: location?.address ?? null,
+            kebele: location?.kebele ?? null,
+            draftedAt: draftedAt ? new Date(draftedAt) : null,
         });
 
-        // Populate basic info before emitting to feed
-        await issue.populate('citizenId', 'fullName');
+        // Populate citizen info before emitting
+        const populated = await IssueReport.findByPk(issue.id, {
+            include: [{ model: User, as: 'citizen', attributes: ['id', 'fullName'] }],
+        });
 
         try {
             const io = getIo();
-            io.emit('new_issue', issue);
+            io.emit('new_issue', populated);
         } catch (err) {
             console.error('[Socket.io] Failed to emit new_issue', err);
         }
 
-        res.status(201).json(issue);
+        res.status(201).json(populated);
     } catch (err) {
         next(err);
     }
@@ -102,19 +93,24 @@ const createIssue = async (req, res, next) => {
  */
 const getIssueById = async (req, res, next) => {
     try {
-        const issue = await IssueReport.findById(req.params.id)
-            .populate('citizenId', 'fullName')
-            .populate('assignedAdminId', 'fullName department');
+        const issue = await IssueReport.findByPk(req.params.id, {
+            include: [
+                { model: User, as: 'citizen', attributes: ['id', 'fullName'] },
+                { model: User, as: 'assignedAdmin', attributes: ['id', 'fullName', 'department'] },
+            ],
+        });
 
         if (!issue) {
             return res.status(404).json({ message: 'Issue not found.' });
         }
 
-        const comments = await Comment.find({ issueId: issue._id })
-            .sort({ createdAt: 1 })
-            .populate('authorId', 'fullName role department');
+        const comments = await Comment.findAll({
+            where: { issueId: issue.id },
+            order: [['createdAt', 'ASC']],
+            include: [{ model: User, as: 'author', attributes: ['id', 'fullName', 'role', 'department'] }],
+        });
 
-        const feedback = await Feedback.findOne({ issueId: issue._id });
+        const feedback = await Feedback.findOne({ where: { issueId: issue.id } });
 
         res.json({ issue, comments, feedback });
     } catch (err) {
@@ -129,9 +125,9 @@ const getIssueById = async (req, res, next) => {
 const voteOnIssue = async (req, res, next) => {
     try {
         const issueId = req.params.id;
-        const citizenId = req.user._id;
+        const citizenId = req.user.id;
 
-        const issue = await IssueReport.findById(issueId);
+        const issue = await IssueReport.findByPk(issueId);
         if (!issue) {
             return res.status(404).json({ message: 'Issue not found.' });
         }
@@ -151,34 +147,36 @@ const addComment = async (req, res, next) => {
     try {
         const issueId = req.params.id;
 
-        const issue = await IssueReport.findById(issueId);
+        const issue = await IssueReport.findByPk(issueId);
         if (!issue) {
             return res.status(404).json({ message: 'Issue not found.' });
         }
 
         const comment = await Comment.create({
             issueId,
-            authorId: req.user._id,
+            authorId: req.user.id,
             text: req.body.text,
         });
 
-        // Keep a live comment count on the issue document
-        await IssueReport.findByIdAndUpdate(issueId, { $inc: { commentCount: 1 } });
+        // Increment live comment count
+        await IssueReport.increment('commentCount', { where: { id: issueId } });
 
-        await comment.populate('authorId', 'fullName role department');
+        const populated = await Comment.findByPk(comment.id, {
+            include: [{ model: User, as: 'author', attributes: ['id', 'fullName', 'role', 'department'] }],
+        });
 
         try {
             const io = getIo();
-            io.to(`issue_${issueId}`).emit('new_comment', comment);
+            io.to(`issue_${issueId}`).emit('new_comment', populated);
             io.emit('issue_comment_count_updated', {
-                issueId: issueId,
-                commentCount: issue.commentCount + 1
+                issueId,
+                commentCount: issue.commentCount + 1,
             });
         } catch (err) {
             console.error('[Socket.io] Failed to emit new_comment', err);
         }
 
-        res.status(201).json(comment);
+        res.status(201).json(populated);
     } catch (err) {
         next(err);
     }
@@ -192,26 +190,27 @@ const reportIssue = async (req, res, next) => {
     try {
         const issueId = req.params.id;
 
-        const issue = await IssueReport.findById(issueId);
+        const issue = await IssueReport.findByPk(issueId);
         if (!issue) {
             return res.status(404).json({ message: 'Issue not found.' });
         }
 
         const report = await ReportedPost.create({
             issueId,
-            citizenId: req.user._id,
+            citizenId: req.user.id,
             reason: req.body.reason,
         });
 
-        const populatedReport = await ReportedPost.findById(report._id)
-            .populate('citizenId', 'fullName email role')
-            .populate({
-                path: 'issueId',
-                populate: {
-                    path: 'citizenId',
-                    select: 'fullName email',
+        const populatedReport = await ReportedPost.findByPk(report.id, {
+            include: [
+                { model: User, as: 'reporter', attributes: ['id', 'fullName', 'email', 'role'] },
+                {
+                    model: IssueReport,
+                    as: 'issue',
+                    include: [{ model: User, as: 'citizen', attributes: ['id', 'fullName', 'email'] }],
                 },
-            });
+            ],
+        });
 
         try {
             const io = getIo();
@@ -232,19 +231,19 @@ const reportIssue = async (req, res, next) => {
  */
 const getMyIssues = async (req, res, next) => {
     try {
-        const issues = await IssueReport.find({ citizenId: req.user._id })
-            .sort({ createdAt: -1 })
-            .populate('assignedAdminId', 'fullName department');
+        const issues = await IssueReport.findAll({
+            where: { citizenId: req.user.id },
+            order: [['createdAt', 'DESC']],
+            include: [
+                { model: User, as: 'assignedAdmin', attributes: ['id', 'fullName', 'department'] },
+            ],
+        });
 
-        // Note: The UI expects comments to be populated or commentCount to exist.
-        // We can attach commentCount if needed, but the Schema already establishes it via the default field `commentCount` mechanism!
-        // No need for lookup.
         res.json(issues);
     } catch (err) {
         next(err);
     }
 };
-
 
 /**
  * POST /api/issues/:id/feedback
@@ -255,16 +254,15 @@ const submitFeedback = async (req, res, next) => {
         const issueId = req.params.id;
         const { rating, comment } = req.body;
 
-        const issue = await IssueReport.findById(issueId);
+        const issue = await IssueReport.findByPk(issueId);
         if (!issue) {
             return res.status(404).json({ message: 'Issue not found.' });
         }
 
         // Upsert: one feedback per citizen per issue
-        const feedback = await Feedback.findOneAndUpdate(
-            { issueId, citizenId: req.user._id },
-            { rating, comment: comment || '' },
-            { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+        const [feedback] = await Feedback.upsert(
+            { issueId, citizenId: req.user.id, rating, comment: comment || '' },
+            { returning: true }
         );
 
         res.status(201).json(feedback);
@@ -275,20 +273,20 @@ const submitFeedback = async (req, res, next) => {
 
 /**
  * PUT /api/issues/:id
- * Citizen edits their own pending issue report (e.g. description, location).
+ * Citizen edits their own pending issue report.
  */
 const editIssue = async (req, res, next) => {
     try {
         const issueId = req.params.id;
         const { description, category, location } = req.body;
 
-        const issue = await IssueReport.findById(issueId);
+        const issue = await IssueReport.findByPk(issueId);
         if (!issue) {
             return res.status(404).json({ message: 'Issue not found.' });
         }
 
         // Verify ownership
-        if (issue.citizenId.toString() !== req.user._id.toString()) {
+        if (issue.citizenId !== req.user.id) {
             return res.status(403).json({ message: 'Not authorized to edit this issue.' });
         }
 
@@ -297,17 +295,21 @@ const editIssue = async (req, res, next) => {
             return res.status(400).json({ message: 'Cannot edit an issue that is already being processed.' });
         }
 
-        const updatedIssue = await IssueReport.findByIdAndUpdate(
-            issueId,
-            {
-                description,
-                category,
-                location
-            },
-            { new: true, runValidators: true }
-        )
-            .populate('citizenId', 'fullName')
-            .populate('assignedAdminId', 'fullName department');
+        await issue.update({
+            description,
+            category,
+            latitude: location?.latitude ?? issue.latitude,
+            longitude: location?.longitude ?? issue.longitude,
+            address: location?.address ?? issue.address,
+            kebele: location?.kebele ?? issue.kebele,
+        });
+
+        const updatedIssue = await IssueReport.findByPk(issueId, {
+            include: [
+                { model: User, as: 'citizen', attributes: ['id', 'fullName'] },
+                { model: User, as: 'assignedAdmin', attributes: ['id', 'fullName', 'department'] },
+            ],
+        });
 
         res.json(updatedIssue);
     } catch (err) {

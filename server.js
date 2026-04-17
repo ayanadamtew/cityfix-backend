@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 5000;
 const server = http.createServer(app);
 initSocket(server);
 
-// Connect to MongoDB then start listening
+// Connect to PostgreSQL then start listening
 app.start().then(() => {
     server.listen(PORT, '0.0.0.0', () => {
         console.log(`CityFix API running on port ${PORT}`);

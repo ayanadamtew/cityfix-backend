@@ -1,9 +1,13 @@
 const request = require('supertest');
-const mongoose = require('mongoose');
+const { v4: uuidv4 } = require('crypto').webcrypto
+    ? require('crypto').randomUUID
+        ? { v4: () => require('crypto').randomUUID() }
+        : require('uuid')
+    : require('uuid');
 const app = require('../src/app');
 const db = require('./helpers/dbSetup');
 const { makeCitizen, makeSectorAdmin } = require('./helpers/authFactory');
-const IssueReport = require('../src/models/IssueReport');
+const { IssueReport } = require('../src/models');
 
 jest.mock('firebase-admin');
 
@@ -11,7 +15,7 @@ beforeAll(() => db.connect());
 afterEach(() => db.clearDatabase());
 afterAll(() => db.closeDatabase());
 
-// Helper: create an issue document directly
+// Helper: create an issue document directly via Sequelize
 const seedIssue = async (citizenId, overrides = {}) =>
     IssueReport.create({
         citizenId,
@@ -19,8 +23,13 @@ const seedIssue = async (citizenId, overrides = {}) =>
         description: overrides.description || 'Pipe burst on Bole road',
         status: overrides.status || 'Pending',
         urgencyCount: overrides.urgencyCount || 0,
-        location: { kebele: 'Kebele 05' },
+        kebele: 'Kebele 05',
     });
+
+// Helper: generate a random UUID for 404 tests
+const fakeId = () => require('crypto').randomUUID
+    ? require('crypto').randomUUID()
+    : '00000000-0000-0000-0000-000000000000';
 
 // ─── GET /api/issues ──────────────────────────────────────────────────────────
 describe('GET /api/issues', () => {
@@ -33,8 +42,8 @@ describe('GET /api/issues', () => {
 
     it('returns all issues', async () => {
         const { user, token } = await makeCitizen();
-        await seedIssue(user._id);
-        await seedIssue(user._id, { category: 'Road' });
+        await seedIssue(user.id);
+        await seedIssue(user.id, { category: 'Road' });
 
         const res = await request(app).get('/api/issues').set('Authorization', token);
         expect(res.statusCode).toBe(200);
@@ -43,12 +52,12 @@ describe('GET /api/issues', () => {
 
     it('filters by kebele', async () => {
         const { user, token } = await makeCitizen();
-        await seedIssue(user._id, { description: 'Issue in 05' });
+        await seedIssue(user.id, { description: 'Issue in 05' });
         await IssueReport.create({
-            citizenId: user._id,
+            citizenId: user.id,
             category: 'Waste',
             description: 'Issue in 07',
-            location: { kebele: 'Kebele 07' },
+            kebele: 'Kebele 07',
         });
 
         const res = await request(app).get('/api/issues?kebele=Kebele 05').set('Authorization', token);
@@ -59,8 +68,8 @@ describe('GET /api/issues', () => {
 
     it('sorts by urgency when sort=urgent', async () => {
         const { user, token } = await makeCitizen();
-        await seedIssue(user._id, { description: 'Low urgency', urgencyCount: 1 });
-        await seedIssue(user._id, { description: 'High urgency', urgencyCount: 10 });
+        await seedIssue(user.id, { description: 'Low urgency', urgencyCount: 1 });
+        await seedIssue(user.id, { description: 'High urgency', urgencyCount: 10 });
 
         const res = await request(app).get('/api/issues?sort=urgent').set('Authorization', token);
         expect(res.statusCode).toBe(200);
@@ -97,7 +106,7 @@ describe('POST /api/issues', () => {
             .send({ category: 'Electricity', description: 'Power outage' });
 
         expect(res.statusCode).toBe(201);
-        expect(res.body.assignedAdminId).toBe(admin._id.toString());
+        expect(res.body.assignedAdminId).toBe(admin.id);
     });
 
     it('creates issue with draftedAt for offline sync', async () => {
@@ -151,25 +160,24 @@ describe('POST /api/issues', () => {
 describe('GET /api/issues/:id', () => {
     it('returns issue with empty comments array', async () => {
         const { user, token } = await makeCitizen();
-        const issue = await seedIssue(user._id);
+        const issue = await seedIssue(user.id);
 
-        const res = await request(app).get(`/api/issues/${issue._id}`).set('Authorization', token);
+        const res = await request(app).get(`/api/issues/${issue.id}`).set('Authorization', token);
         expect(res.statusCode).toBe(200);
-        expect(res.body.issue._id).toBe(issue._id.toString());
+        expect(res.body.issue.id).toBe(issue.id);
         expect(res.body.comments).toEqual([]);
     });
 
     it('returns 404 for a nonexistent issue', async () => {
         const { token } = await makeCitizen();
-        const fakeId = new mongoose.Types.ObjectId();
-        const res = await request(app).get(`/api/issues/${fakeId}`).set('Authorization', token);
+        const res = await request(app).get(`/api/issues/${fakeId()}`).set('Authorization', token);
         expect(res.statusCode).toBe(404);
     });
 
     it('returns 401 without auth token', async () => {
         const { user } = await makeCitizen();
-        const issue = await seedIssue(user._id);
-        const res = await request(app).get(`/api/issues/${issue._id}`);
+        const issue = await seedIssue(user.id);
+        const res = await request(app).get(`/api/issues/${issue.id}`);
         expect(res.statusCode).toBe(401);
     });
 });
@@ -178,10 +186,10 @@ describe('GET /api/issues/:id', () => {
 describe('POST /api/issues/:id/vote', () => {
     it('citizen can vote on an issue (action=voted)', async () => {
         const { user: citizen, token } = await makeCitizen();
-        const issue = await seedIssue(citizen._id);
+        const issue = await seedIssue(citizen.id);
 
         const res = await request(app)
-            .post(`/api/issues/${issue._id}/vote`)
+            .post(`/api/issues/${issue.id}/vote`)
             .set('Authorization', token);
 
         expect(res.statusCode).toBe(200);
@@ -191,14 +199,14 @@ describe('POST /api/issues/:id/vote', () => {
 
     it('second vote by same citizen removes vote (action=unvoted)', async () => {
         const { user: citizen, token } = await makeCitizen();
-        const issue = await seedIssue(citizen._id);
+        const issue = await seedIssue(citizen.id);
 
         await request(app)
-            .post(`/api/issues/${issue._id}/vote`)
+            .post(`/api/issues/${issue.id}/vote`)
             .set('Authorization', token);
 
         const res = await request(app)
-            .post(`/api/issues/${issue._id}/vote`)
+            .post(`/api/issues/${issue.id}/vote`)
             .set('Authorization', token);
 
         expect(res.statusCode).toBe(200);
@@ -208,17 +216,16 @@ describe('POST /api/issues/:id/vote', () => {
 
     it('returns 404 for nonexistent issue', async () => {
         const { token } = await makeCitizen();
-        const fakeId = new mongoose.Types.ObjectId();
         const res = await request(app)
-            .post(`/api/issues/${fakeId}/vote`)
+            .post(`/api/issues/${fakeId()}/vote`)
             .set('Authorization', token);
         expect(res.statusCode).toBe(404);
     });
 
     it('returns 401 when not authenticated', async () => {
         const { user } = await makeCitizen();
-        const issue = await seedIssue(user._id);
-        const res = await request(app).post(`/api/issues/${issue._id}/vote`);
+        const issue = await seedIssue(user.id);
+        const res = await request(app).post(`/api/issues/${issue.id}/vote`);
         expect(res.statusCode).toBe(401);
     });
 });
@@ -227,24 +234,24 @@ describe('POST /api/issues/:id/vote', () => {
 describe('POST /api/issues/:id/comments', () => {
     it('adds a comment to an issue', async () => {
         const { user, token } = await makeCitizen();
-        const issue = await seedIssue(user._id);
+        const issue = await seedIssue(user.id);
 
         const res = await request(app)
-            .post(`/api/issues/${issue._id}/comments`)
+            .post(`/api/issues/${issue.id}/comments`)
             .set('Authorization', token)
             .send({ text: 'This needs urgent attention!' });
 
         expect(res.statusCode).toBe(201);
         expect(res.body.text).toBe('This needs urgent attention!');
-        expect(res.body.issueId).toBe(issue._id.toString());
+        expect(res.body.issueId).toBe(issue.id);
     });
 
     it('returns 422 if comment text is empty', async () => {
         const { user, token } = await makeCitizen();
-        const issue = await seedIssue(user._id);
+        const issue = await seedIssue(user.id);
 
         const res = await request(app)
-            .post(`/api/issues/${issue._id}/comments`)
+            .post(`/api/issues/${issue.id}/comments`)
             .set('Authorization', token)
             .send({ text: '' });
 
@@ -253,10 +260,10 @@ describe('POST /api/issues/:id/comments', () => {
 
     it('returns 401 when unauthenticated', async () => {
         const { user } = await makeCitizen();
-        const issue = await seedIssue(user._id);
+        const issue = await seedIssue(user.id);
 
         const res = await request(app)
-            .post(`/api/issues/${issue._id}/comments`)
+            .post(`/api/issues/${issue.id}/comments`)
             .send({ text: 'Anonymous comment' });
 
         expect(res.statusCode).toBe(401);
@@ -264,10 +271,9 @@ describe('POST /api/issues/:id/comments', () => {
 
     it('returns 404 when issue does not exist', async () => {
         const { token } = await makeCitizen();
-        const fakeId = new mongoose.Types.ObjectId();
 
         const res = await request(app)
-            .post(`/api/issues/${fakeId}/comments`)
+            .post(`/api/issues/${fakeId()}/comments`)
             .set('Authorization', token)
             .send({ text: 'Ghost comment' });
 
@@ -279,10 +285,10 @@ describe('POST /api/issues/:id/comments', () => {
 describe('POST /api/issues/:id/report', () => {
     it('flags an issue with a reason', async () => {
         const { user, token } = await makeCitizen();
-        const issue = await seedIssue(user._id);
+        const issue = await seedIssue(user.id);
 
         const res = await request(app)
-            .post(`/api/issues/${issue._id}/report`)
+            .post(`/api/issues/${issue.id}/report`)
             .set('Authorization', token)
             .send({ reason: 'Spam content' });
 
@@ -292,10 +298,10 @@ describe('POST /api/issues/:id/report', () => {
 
     it('returns 422 if reason is missing', async () => {
         const { user, token } = await makeCitizen();
-        const issue = await seedIssue(user._id);
+        const issue = await seedIssue(user.id);
 
         const res = await request(app)
-            .post(`/api/issues/${issue._id}/report`)
+            .post(`/api/issues/${issue.id}/report`)
             .set('Authorization', token)
             .send({});
 
@@ -304,10 +310,9 @@ describe('POST /api/issues/:id/report', () => {
 
     it('returns 404 for nonexistent issue', async () => {
         const { token } = await makeCitizen();
-        const fakeId = new mongoose.Types.ObjectId();
 
         const res = await request(app)
-            .post(`/api/issues/${fakeId}/report`)
+            .post(`/api/issues/${fakeId()}/report`)
             .set('Authorization', token)
             .send({ reason: 'Inappropriate' });
 
@@ -321,8 +326,8 @@ describe('GET /api/issues/mine', () => {
         const { user: citizen1, token: token1 } = await makeCitizen();
         const { user: citizen2 } = await makeCitizen();
 
-        await seedIssue(citizen1._id, { description: 'Mine' });
-        await seedIssue(citizen2._id, { description: 'Not mine' });
+        await seedIssue(citizen1.id, { description: 'Mine' });
+        await seedIssue(citizen2.id, { description: 'Not mine' });
 
         const res = await request(app)
             .get('/api/issues/mine')
@@ -350,10 +355,10 @@ describe('GET /api/issues/mine', () => {
 describe('POST /api/issues/:id/feedback', () => {
     it('citizen can submit a star rating for their resolved issue', async () => {
         const { user, token } = await makeCitizen();
-        const issue = await seedIssue(user._id, { status: 'Resolved' });
+        const issue = await seedIssue(user.id, { status: 'Resolved' });
 
         const res = await request(app)
-            .post(`/api/issues/${issue._id}/feedback`)
+            .post(`/api/issues/${issue.id}/feedback`)
             .set('Authorization', token)
             .send({ rating: 4, comment: 'Fixed quickly!' });
 
@@ -364,15 +369,15 @@ describe('POST /api/issues/:id/feedback', () => {
 
     it('second submission updates the existing feedback (upsert)', async () => {
         const { user, token } = await makeCitizen();
-        const issue = await seedIssue(user._id, { status: 'Resolved' });
+        const issue = await seedIssue(user.id, { status: 'Resolved' });
 
         await request(app)
-            .post(`/api/issues/${issue._id}/feedback`)
+            .post(`/api/issues/${issue.id}/feedback`)
             .set('Authorization', token)
             .send({ rating: 2 });
 
         const res = await request(app)
-            .post(`/api/issues/${issue._id}/feedback`)
+            .post(`/api/issues/${issue.id}/feedback`)
             .set('Authorization', token)
             .send({ rating: 5, comment: 'Much better now!' });
 
@@ -382,10 +387,10 @@ describe('POST /api/issues/:id/feedback', () => {
 
     it('returns 422 for rating out of range', async () => {
         const { user, token } = await makeCitizen();
-        const issue = await seedIssue(user._id);
+        const issue = await seedIssue(user.id);
 
         const res = await request(app)
-            .post(`/api/issues/${issue._id}/feedback`)
+            .post(`/api/issues/${issue.id}/feedback`)
             .set('Authorization', token)
             .send({ rating: 6 });
 
@@ -394,10 +399,10 @@ describe('POST /api/issues/:id/feedback', () => {
 
     it('returns 422 when rating is missing', async () => {
         const { user, token } = await makeCitizen();
-        const issue = await seedIssue(user._id);
+        const issue = await seedIssue(user.id);
 
         const res = await request(app)
-            .post(`/api/issues/${issue._id}/feedback`)
+            .post(`/api/issues/${issue.id}/feedback`)
             .set('Authorization', token)
             .send({ comment: 'No rating provided' });
 
@@ -406,10 +411,9 @@ describe('POST /api/issues/:id/feedback', () => {
 
     it('returns 404 for a nonexistent issue', async () => {
         const { token } = await makeCitizen();
-        const fakeId = new mongoose.Types.ObjectId();
 
         const res = await request(app)
-            .post(`/api/issues/${fakeId}/feedback`)
+            .post(`/api/issues/${fakeId()}/feedback`)
             .set('Authorization', token)
             .send({ rating: 3 });
 
@@ -418,10 +422,10 @@ describe('POST /api/issues/:id/feedback', () => {
 
     it('returns 401 without auth token', async () => {
         const { user } = await makeCitizen();
-        const issue = await seedIssue(user._id);
+        const issue = await seedIssue(user.id);
 
         const res = await request(app)
-            .post(`/api/issues/${issue._id}/feedback`)
+            .post(`/api/issues/${issue.id}/feedback`)
             .send({ rating: 4 });
 
         expect(res.statusCode).toBe(401);

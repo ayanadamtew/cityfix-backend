@@ -96,7 +96,7 @@ describe('GET /api/users/me', () => {
             .set('Authorization', token);
 
         expect(res.statusCode).toBe(200);
-        expect(res.body._id).toBe(user._id.toString());
+        expect(res.body.id).toBe(user.id);
         expect(res.body.fullName).toBe('Dave Test');
     });
 

@@ -1,24 +1,28 @@
-const mongoose = require('mongoose');
+const { DataTypes, Model } = require('sequelize');
+const sequelize = require('../config/db');
 
-const commentSchema = new mongoose.Schema(
+class Comment extends Model {}
+
+Comment.init(
     {
-        issueId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'IssueReport',
-            required: true,
+        id: {
+            type: DataTypes.UUID,
+            defaultValue: DataTypes.UUIDV4,
+            primaryKey: true,
         },
-        authorId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
-            required: true,
-        },
+        // issueId and authorId are added as FK associations in models/index.js
         text: {
-            type: String,
-            required: true,
-            trim: true,
+            type: DataTypes.TEXT,
+            allowNull: false,
         },
     },
-    { timestamps: { createdAt: true, updatedAt: false } }
+    {
+        sequelize,
+        modelName: 'Comment',
+        tableName: 'comments',
+        timestamps: true,
+        updatedAt: false,
+    }
 );
 
-module.exports = mongoose.model('Comment', commentSchema);
+module.exports = Comment;

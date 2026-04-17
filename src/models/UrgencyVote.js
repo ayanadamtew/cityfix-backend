@@ -1,22 +1,28 @@
-const mongoose = require('mongoose');
+const { DataTypes, Model } = require('sequelize');
+const sequelize = require('../config/db');
 
-const urgencyVoteSchema = new mongoose.Schema(
+class UrgencyVote extends Model {}
+
+UrgencyVote.init(
     {
-        issueId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'IssueReport',
-            required: true,
+        id: {
+            type: DataTypes.UUID,
+            defaultValue: DataTypes.UUIDV4,
+            primaryKey: true,
         },
-        citizenId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
-            required: true,
-        },
+        // issueId and citizenId are added as FK associations in models/index.js
     },
-    { timestamps: { createdAt: true, updatedAt: false } }
+    {
+        sequelize,
+        modelName: 'UrgencyVote',
+        tableName: 'urgency_votes',
+        timestamps: true,
+        updatedAt: false,
+        indexes: [
+            // One vote per citizen per issue
+            { unique: true, fields: ['issueId', 'citizenId'] },
+        ],
+    }
 );
 
-// Compound unique index – one vote per citizen per issue
-urgencyVoteSchema.index({ issueId: 1, citizenId: 1 }, { unique: true });
-
-module.exports = mongoose.model('UrgencyVote', urgencyVoteSchema);
+module.exports = UrgencyVote;

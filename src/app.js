@@ -6,7 +6,7 @@ const morgan = require('morgan');
 const swaggerUi = require('swagger-ui-express');
 const fs = require('fs');
 
-const connectDB = require('./config/db');
+const { connectDB } = require('./config/db');
 const { initializeFirebase } = require('./config/firebase');
 const authRoutes = require('./routes/authRoutes');
 const issueRoutes = require('./routes/issueRoutes');

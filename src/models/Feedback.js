@@ -1,29 +1,37 @@
-const mongoose = require('mongoose');
+const { DataTypes, Model } = require('sequelize');
+const sequelize = require('../config/db');
 
-const feedbackSchema = new mongoose.Schema(
+class Feedback extends Model {}
+
+Feedback.init(
     {
-        issueId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'IssueReport',
-            required: true,
+        id: {
+            type: DataTypes.UUID,
+            defaultValue: DataTypes.UUIDV4,
+            primaryKey: true,
         },
-        citizenId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
-            required: true,
-        },
+        // issueId and citizenId are added as FK associations in models/index.js
         rating: {
-            type: Number,
-            required: true,
-            min: 1,
-            max: 5,
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            validate: { min: 1, max: 5 },
         },
         comment: {
-            type: String,
-            trim: true,
+            type: DataTypes.TEXT,
+            allowNull: true,
         },
     },
-    { timestamps: { createdAt: true, updatedAt: false } }
+    {
+        sequelize,
+        modelName: 'Feedback',
+        tableName: 'feedbacks',
+        timestamps: true,
+        updatedAt: false,
+        indexes: [
+            // One feedback per citizen per issue
+            { unique: true, fields: ['issueId', 'citizenId'] },
+        ],
+    }
 );
 
-module.exports = mongoose.model('Feedback', feedbackSchema);
+module.exports = Feedback;

@@ -1,10 +1,9 @@
 const { admin } = require('../config/firebase');
-const User = require('../models/User');
+const { User } = require('../models');
 
 /**
  * POST /api/auth/register
- * Called after Firebase Auth signup to persist user in MongoDB.
- * Supports both phone-only users (no email) and email users.
+ * Called after Firebase Auth signup to persist user in PostgreSQL.
  */
 const register = async (req, res, next) => {
     try {
@@ -22,22 +21,21 @@ const register = async (req, res, next) => {
         if (email && email.endsWith('@cityfix.local')) {
             email = undefined; // Do not store dummy emails used for phone+password auth
         }
-        const phone =
-            decodedToken.phone_number || phoneNumber || undefined;
+        const phone = decodedToken.phone_number || phoneNumber || undefined;
 
         // Prevent duplicate registrations
-        const existing = await User.findOne({ firebaseUid: decodedToken.uid });
+        const existing = await User.findOne({ where: { firebaseUid: decodedToken.uid } });
         if (existing) {
             return res.status(200).json({ message: 'User already registered.', user: existing });
         }
 
         const user = await User.create({
             firebaseUid: decodedToken.uid,
-            email,
+            email: email || null,
             fullName,
-            phoneNumber: phone,
+            phoneNumber: phone || null,
             role: role || 'CITIZEN',
-            department: role === 'SECTOR_ADMIN' ? department : undefined,
+            department: role === 'SECTOR_ADMIN' ? department : null,
         });
 
         res.status(201).json({ message: 'User registered successfully.', user });
@@ -65,11 +63,8 @@ const updateFcmToken = async (req, res, next) => {
             return res.status(400).json({ message: 'fcmToken is required.' });
         }
 
-        const user = await User.findByIdAndUpdate(
-            req.user._id,
-            { fcmToken },
-            { new: true }
-        );
+        await User.update({ fcmToken }, { where: { id: req.user.id } });
+        const user = await User.findByPk(req.user.id);
 
         res.json({ message: 'FCM Token updated successfully', user });
     } catch (err) {
@@ -89,11 +84,8 @@ const updateProfile = async (req, res, next) => {
             return res.status(400).json({ message: 'fullName is required.' });
         }
 
-        const user = await User.findByIdAndUpdate(
-            req.user._id,
-            { fullName },
-            { new: true }
-        );
+        await User.update({ fullName }, { where: { id: req.user.id } });
+        const user = await User.findByPk(req.user.id);
 
         res.json({ message: 'Profile updated successfully', user });
     } catch (err) {

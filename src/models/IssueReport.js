@@ -1,68 +1,113 @@
-const mongoose = require('mongoose');
+const { DataTypes, Model } = require('sequelize');
+const sequelize = require('../config/db');
 
 const CATEGORIES = ['Water', 'Waste', 'Road', 'Electricity'];
 const STATUSES = ['Pending', 'In Progress', 'Resolved'];
 
-const issueReportSchema = new mongoose.Schema(
+class IssueReport extends Model {
+    /**
+     * Returns the nested location object expected by the API consumers.
+     * Call this when serialising to JSON manually.
+     */
+    toLocationObject() {
+        return {
+            latitude: this.latitude,
+            longitude: this.longitude,
+            address: this.address,
+            kebele: this.kebele,
+        };
+    }
+
+    /**
+     * Override toJSON so route responses automatically present `location`
+     * as a nested object and rename `id` consistently.
+     */
+    toJSON() {
+        const values = { ...this.get() };
+        values.location = {
+            latitude: values.latitude,
+            longitude: values.longitude,
+            address: values.address,
+            kebele: values.kebele,
+        };
+        delete values.latitude;
+        delete values.longitude;
+        delete values.address;
+        delete values.kebele;
+        return values;
+    }
+}
+
+IssueReport.init(
     {
-        citizenId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
-            required: true,
+        id: {
+            type: DataTypes.UUID,
+            defaultValue: DataTypes.UUIDV4,
+            primaryKey: true,
         },
-        assignedAdminId: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
-            default: null,
-        },
+        // citizenId and assignedAdminId are added as FK associations in models/index.js
         category: {
-            type: String,
-            enum: CATEGORIES,
-            required: true,
+            type: DataTypes.ENUM(...CATEGORIES),
+            allowNull: false,
         },
         description: {
-            type: String,
-            required: true,
-            trim: true,
+            type: DataTypes.TEXT,
+            allowNull: false,
         },
         photoUrl: {
-            type: String,
-            default: null,
+            type: DataTypes.STRING,
+            allowNull: true,
+            defaultValue: null,
         },
-        location: {
-            latitude: { type: Number },
-            longitude: { type: Number },
-            address: { type: String, trim: true },
-            kebele: { type: String, trim: true },
+        // Flattened location fields
+        latitude: {
+            type: DataTypes.DOUBLE,
+            allowNull: true,
+        },
+        longitude: {
+            type: DataTypes.DOUBLE,
+            allowNull: true,
+        },
+        address: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
+        kebele: {
+            type: DataTypes.STRING,
+            allowNull: true,
         },
         status: {
-            type: String,
-            enum: STATUSES,
-            default: 'Pending',
+            type: DataTypes.ENUM(...STATUSES),
+            allowNull: false,
+            defaultValue: 'Pending',
         },
         urgencyCount: {
-            type: Number,
-            default: 0,
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 0,
         },
-        votedUserIds: [{
-            type: mongoose.Schema.Types.ObjectId,
-            ref: 'User',
-        }],
         commentCount: {
-            type: Number,
-            default: 0,
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 0,
         },
         draftedAt: {
-            type: Date,
-            default: null,
+            type: DataTypes.DATE,
+            allowNull: true,
+            defaultValue: null,
         },
     },
-    { timestamps: true }
+    {
+        sequelize,
+        modelName: 'IssueReport',
+        tableName: 'issue_reports',
+        timestamps: true,
+        indexes: [
+            { fields: ['kebele'] },
+            { fields: ['urgencyCount'] },
+            { fields: ['createdAt'] },
+        ],
+    }
 );
 
-// Index for feed queries
-issueReportSchema.index({ 'location.kebele': 1 });
-issueReportSchema.index({ urgencyCount: -1 });
-issueReportSchema.index({ createdAt: -1 });
-
-module.exports = mongoose.model('IssueReport', issueReportSchema);
+module.exports = IssueReport;

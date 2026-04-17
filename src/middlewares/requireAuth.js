@@ -1,8 +1,8 @@
 const { admin } = require('../config/firebase');
-const User = require('../models/User');
+const { User } = require('../models');
 
 /**
- * Verifies the Firebase Bearer token and attaches the MongoDB user to req.user.
+ * Verifies the Firebase Bearer token and attaches the PostgreSQL user to req.user.
  */
 const requireAuth = async (req, res, next) => {
     const authHeader = req.headers.authorization;
@@ -18,16 +18,22 @@ const requireAuth = async (req, res, next) => {
         const decodedToken = await admin.auth().verifyIdToken(idToken);
         console.log('[requireAuth] Firebase UID decoded:', decodedToken.uid);
 
-        const user = await User.findOne({ firebaseUid: decodedToken.uid });
+        const user = await User.findOne({ where: { firebaseUid: decodedToken.uid } });
 
         if (!user) {
-            console.warn('[requireAuth] REJECTED — Firebase UID', decodedToken.uid, 'not found in MongoDB. Did you call POST /api/auth/register?');
+            console.warn(
+                '[requireAuth] REJECTED — Firebase UID',
+                decodedToken.uid,
+                'not found in DB. Did you call POST /api/auth/register?'
+            );
             return res.status(401).json({ message: 'Unauthorized: User not registered in system.' });
         }
 
         if (user.isDisabled) {
-            console.warn('[requireAuth] REJECTED — User', user._id, 'is disabled.');
-            return res.status(403).json({ message: 'Forbidden: Your account has been disabled. Please contact the administrator.' });
+            console.warn('[requireAuth] REJECTED — User', user.id, 'is disabled.');
+            return res.status(403).json({
+                message: 'Forbidden: Your account has been disabled. Please contact the administrator.',
+            });
         }
 
         req.user = user;
