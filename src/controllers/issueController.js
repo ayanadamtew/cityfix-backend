@@ -3,6 +3,7 @@ const { IssueReport, Comment, ReportedPost, Feedback, User } = require('../model
 const { findAdminByCategory } = require('../services/routingService');
 const { toggleUrgencyVote } = require('../services/voteService');
 const { getIo } = require('../services/socketService');
+const { getDistanceInMeters } = require('../services/geoUtils');
 
 /**
  * GET /api/issues
@@ -317,6 +318,73 @@ const editIssue = async (req, res, next) => {
     }
 };
 
+/**
+ * GET /api/issues/check-duplicate?latitude=X&longitude=Y&category=Z
+ * Check if a similar report already exists within 10 metres.
+ */
+const DUPLICATE_RADIUS_M = 10;
+
+const checkDuplicate = async (req, res, next) => {
+    try {
+        const { latitude, longitude, category } = req.query;
+
+        if (!latitude || !longitude || !category) {
+            return res
+                .status(400)
+                .json({ message: 'latitude, longitude, and category are required.' });
+        }
+
+        const lat = parseFloat(latitude);
+        const lng = parseFloat(longitude);
+
+        if (Number.isNaN(lat) || Number.isNaN(lng)) {
+            return res
+                .status(400)
+                .json({ message: 'latitude and longitude must be valid numbers.' });
+        }
+
+        // Fetch non-resolved issues of the same category that have coordinates
+        const candidates = await IssueReport.findAll({
+            where: {
+                category,
+                status: { [Op.ne]: 'Resolved' },
+                latitude: { [Op.ne]: null },
+                longitude: { [Op.ne]: null },
+            },
+            include: [
+                { model: User, as: 'citizen', attributes: ['id', 'fullName'] },
+            ],
+        });
+
+        const nearbyReports = [];
+
+        for (const issue of candidates) {
+            const dist = getDistanceInMeters(lat, lng, issue.latitude, issue.longitude);
+            if (dist <= DUPLICATE_RADIUS_M) {
+                const json = issue.toJSON();
+                nearbyReports.push({
+                    id: json.id,
+                    category: json.category,
+                    description: json.description,
+                    status: json.status,
+                    photoUrl: json.photoUrl,
+                    location: json.location,
+                    citizen: json.citizen,
+                    createdAt: json.createdAt,
+                    distance: Math.round(dist),
+                });
+            }
+        }
+
+        res.json({
+            isDuplicate: nearbyReports.length > 0,
+            nearbyReports,
+        });
+    } catch (err) {
+        next(err);
+    }
+};
+
 module.exports = {
     getIssues,
     createIssue,
@@ -327,4 +395,5 @@ module.exports = {
     getMyIssues,
     editIssue,
     submitFeedback,
+    checkDuplicate,
 };

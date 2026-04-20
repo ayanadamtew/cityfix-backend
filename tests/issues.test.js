@@ -431,3 +431,77 @@ describe('POST /api/issues/:id/feedback', () => {
         expect(res.statusCode).toBe(401);
     });
 });
+
+// ─── GET /api/issues/check-duplicate ─────────────────────────────────────────
+describe('GET /api/issues/check-duplicate', () => {
+    // Helper: seed an issue with coordinates
+    const seedGeoIssue = async (citizenId, lat, lng, overrides = {}) =>
+        IssueReport.create({
+            citizenId,
+            category: overrides.category || 'Water',
+            description: overrides.description || 'Geo issue',
+            status: overrides.status || 'Pending',
+            latitude: lat,
+            longitude: lng,
+            kebele: 'Kebele 05',
+        });
+
+    it('returns isDuplicate false when no nearby reports exist', async () => {
+        const { token } = await makeCitizen();
+        const res = await request(app)
+            .get('/api/issues/check-duplicate?latitude=7.6756&longitude=36.8358&category=Water')
+            .set('Authorization', token);
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.isDuplicate).toBe(false);
+        expect(res.body.nearbyReports).toHaveLength(0);
+    });
+
+    it('returns isDuplicate true when a report with same category exists within 10m', async () => {
+        const { user, token } = await makeCitizen();
+        // Seed an issue at exact location
+        await seedGeoIssue(user.id, 7.6756, 36.8358, { category: 'Water' });
+
+        // Query from the same point
+        const res = await request(app)
+            .get('/api/issues/check-duplicate?latitude=7.6756&longitude=36.8358&category=Water')
+            .set('Authorization', token);
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.isDuplicate).toBe(true);
+        expect(res.body.nearbyReports.length).toBeGreaterThanOrEqual(1);
+        expect(res.body.nearbyReports[0].distance).toBeLessThanOrEqual(10);
+    });
+
+    it('returns isDuplicate false when nearby report has a different category', async () => {
+        const { user, token } = await makeCitizen();
+        await seedGeoIssue(user.id, 7.6756, 36.8358, { category: 'Road' });
+
+        const res = await request(app)
+            .get('/api/issues/check-duplicate?latitude=7.6756&longitude=36.8358&category=Water')
+            .set('Authorization', token);
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.isDuplicate).toBe(false);
+    });
+
+    it('returns isDuplicate false when nearest report is more than 10m away', async () => {
+        const { user, token } = await makeCitizen();
+        // ~100m offset in latitude
+        await seedGeoIssue(user.id, 7.6766, 36.8358, { category: 'Water' });
+
+        const res = await request(app)
+            .get('/api/issues/check-duplicate?latitude=7.6756&longitude=36.8358&category=Water')
+            .set('Authorization', token);
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.isDuplicate).toBe(false);
+    });
+
+    it('returns 401 without auth token', async () => {
+        const res = await request(app)
+            .get('/api/issues/check-duplicate?latitude=7.6756&longitude=36.8358&category=Water');
+
+        expect(res.statusCode).toBe(401);
+    });
+});

@@ -12,6 +12,7 @@ const {
     getMyIssues,
     submitFeedback,
     editIssue,
+    checkDuplicate,
 } = require('../controllers/issueController');
 const requireAuth = require('../middlewares/requireAuth');
 const requireRole = require('../middlewares/requireRole');
@@ -39,6 +40,9 @@ router.post(
     validate,
     createIssue
 );
+
+// GET /api/issues/check-duplicate – check for nearby duplicate reports
+router.get('/check-duplicate', requireAuth, requireRole(['CITIZEN']), checkDuplicate);
 
 // GET /api/issues/:id – single issue with comments (auth required)
 router.get('/:id', requireAuth, getIssueById);
