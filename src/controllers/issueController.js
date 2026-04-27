@@ -96,7 +96,7 @@ const getIssueById = async (req, res, next) => {
     try {
         const issue = await IssueReport.findByPk(req.params.id, {
             include: [
-                { model: User, as: 'citizen', attributes: ['id', 'fullName'] },
+                { model: User, as: 'citizen', attributes: ['id', 'fullName', 'email', 'phoneNumber'] },
                 { model: User, as: 'assignedAdmin', attributes: ['id', 'fullName', 'department'] },
             ],
         });
@@ -385,6 +385,44 @@ const checkDuplicate = async (req, res, next) => {
     }
 };
 
+/**
+ * DELETE /api/issues/:id
+ * Citizen deletes their own pending issue report.
+ */
+const deleteIssue = async (req, res, next) => {
+    try {
+        const issueId = req.params.id;
+
+        const issue = await IssueReport.findByPk(issueId);
+        if (!issue) {
+            return res.status(404).json({ message: 'Issue not found.' });
+        }
+
+        // Verify ownership
+        if (issue.citizenId !== req.user.id) {
+            return res.status(403).json({ message: 'Not authorized to delete this issue.' });
+        }
+
+        // Only allow deletion if status is pending
+        if (issue.status.toLowerCase() !== 'pending') {
+            return res.status(400).json({ message: 'Cannot delete an issue that is already being processed.' });
+        }
+
+        await issue.destroy();
+
+        try {
+            const io = getIo();
+            io.emit('issue_deleted', { id: issueId });
+        } catch (err) {
+            console.error('[Socket.io] Failed to emit issue_deleted', err);
+        }
+
+        res.json({ message: 'Issue deleted successfully.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
 module.exports = {
     getIssues,
     createIssue,
@@ -396,4 +434,5 @@ module.exports = {
     editIssue,
     submitFeedback,
     checkDuplicate,
+    deleteIssue,
 };

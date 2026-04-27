@@ -320,6 +320,64 @@ describe('POST /api/issues/:id/report', () => {
     });
 });
 
+// ─── DELETE /api/issues/:id ───────────────────────────────────────────────────
+describe('DELETE /api/issues/:id', () => {
+    it('citizen can delete their own pending issue', async () => {
+        const { user, token } = await makeCitizen();
+        const issue = await seedIssue(user.id, { status: 'Pending' });
+
+        const res = await request(app)
+            .delete(`/api/issues/${issue.id}`)
+            .set('Authorization', token);
+
+        expect(res.statusCode).toBe(200);
+        expect(res.body.message).toMatch(/deleted successfully/i);
+
+        const checkIssue = await IssueReport.findByPk(issue.id);
+        expect(checkIssue).toBeNull();
+    });
+
+    it('returns 403 trying to delete someone else\'s issue', async () => {
+        const { user: citizen1 } = await makeCitizen();
+        const { token: token2 } = await makeCitizen();
+        const issue = await seedIssue(citizen1.id, { status: 'Pending' });
+
+        const res = await request(app)
+            .delete(`/api/issues/${issue.id}`)
+            .set('Authorization', token2);
+
+        expect(res.statusCode).toBe(403);
+    });
+
+    it('returns 400 trying to delete an issue that is not Pending', async () => {
+        const { user, token } = await makeCitizen();
+        const issue = await seedIssue(user.id, { status: 'In Progress' });
+
+        const res = await request(app)
+            .delete(`/api/issues/${issue.id}`)
+            .set('Authorization', token);
+
+        expect(res.statusCode).toBe(400);
+    });
+
+    it('returns 404 for nonexistent issue', async () => {
+        const { token } = await makeCitizen();
+
+        const res = await request(app)
+            .delete(`/api/issues/${fakeId()}`)
+            .set('Authorization', token);
+
+        expect(res.statusCode).toBe(404);
+    });
+
+    it('returns 401 without auth token', async () => {
+        const { user } = await makeCitizen();
+        const issue = await seedIssue(user.id);
+        const res = await request(app).delete(`/api/issues/${issue.id}`);
+        expect(res.statusCode).toBe(401);
+    });
+});
+
 // ─── GET /api/issues/mine ─────────────────────────────────────────────────────
 describe('GET /api/issues/mine', () => {
     it("returns only the authenticated citizen's own issues", async () => {

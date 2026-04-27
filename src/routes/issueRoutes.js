@@ -13,6 +13,7 @@ const {
     submitFeedback,
     editIssue,
     checkDuplicate,
+    deleteIssue,
 } = require('../controllers/issueController');
 const requireAuth = require('../middlewares/requireAuth');
 const requireRole = require('../middlewares/requireRole');
@@ -59,6 +60,14 @@ router.put(
     ],
     validate,
     editIssue
+);
+
+// DELETE /api/issues/:id – citizen deletes their pending report
+router.delete(
+    '/:id',
+    requireAuth,
+    requireRole(['CITIZEN']),
+    deleteIssue
 );
 
 // POST /api/issues/:id/vote – toggle urgency vote
