@@ -11,6 +11,7 @@ const { initializeFirebase } = require('./config/firebase');
 const authRoutes = require('./routes/authRoutes');
 const issueRoutes = require('./routes/issueRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const technicianRoutes = require('./routes/technicianRoutes');
 const errorHandler = require('./middlewares/errorHandler');
 
 // Init Firebase before anything else
@@ -40,7 +41,8 @@ try {
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api', authRoutes);          // /api/auth/register  /api/users/me
 app.use('/api/issues', issueRoutes);  // /api/issues  /api/issues/:id  etc.
-app.use('/api/admin', adminRoutes);   // /api/admin/issues  /api/admin/analytics
+app.use('/api/admin', adminRoutes);          // /api/admin/issues  /api/admin/analytics  /api/admin/technicians
+app.use('/api/technician', technicianRoutes); // /api/technician/tasks  /api/technician/stats
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ status: 'ok', service: 'CityFix API' }));

@@ -1,4 +1,4 @@
-const { IssueReport, Feedback } = require('../models');
+const { IssueReport, Feedback, User, Assignment } = require('../models');
 const { Op, fn, col, literal } = require('sequelize');
 
 /**
@@ -75,7 +75,7 @@ const getAnalytics = async (department = null) => {
     });
 
     // ── Build result maps ─────────────────────────────────────────────────────
-    const statusMap = { Pending: 0, 'In Progress': 0, Resolved: 0 };
+    const statusMap = { Pending: 0, Approved: 0, Assigned: 0, 'In Progress': 0, 'Waiting Verification': 0, Resolved: 0, Rejected: 0 };
     statusRows.forEach(({ status, count }) => {
         statusMap[status] = parseInt(count, 10);
     });
@@ -105,6 +105,17 @@ const getAnalytics = async (department = null) => {
         }
     }
 
+    // ── 7. Technician stats ───────────────────────────────────────────────────
+    const techWhere = department ? { department, role: 'TECHNICIAN' } : { role: 'TECHNICIAN' };
+    const totalTechnicians = await User.count({ where: techWhere });
+    const activeTechnicians = await User.count({ where: { ...techWhere, isDisabled: false } });
+
+    const assignWhere = department
+        ? {}
+        : {};
+    const totalAssignments = await Assignment.count();
+    const completedAssignments = await Assignment.count({ where: { status: 'Resolved' } });
+
     return {
         totalIssues: Object.values(statusMap).reduce((a, b) => a + b, 0),
         byStatus: statusMap,
@@ -113,6 +124,12 @@ const getAnalytics = async (department = null) => {
         avgResolutionTimeDays,
         avgFeedbackRating,
         locations,
+        technicianStats: {
+            totalTechnicians,
+            activeTechnicians,
+            totalAssignments,
+            completedAssignments,
+        },
     };
 };
 

@@ -62,6 +62,39 @@ const seedDefaultUsers = async () => {
             department: 'Electricity',
             isDisabled: false,
         },
+        // ─── Seed Technicians ────────────────────────────────────────────
+        {
+            email: 'water-tech@cityfix.org',
+            password: 'tech123',
+            fullName: 'Abebe Tadesse',
+            role: 'TECHNICIAN',
+            department: 'Water',
+            isDisabled: false,
+        },
+        {
+            email: 'road-tech@cityfix.org',
+            password: 'tech123',
+            fullName: 'Dawit Mekonnen',
+            role: 'TECHNICIAN',
+            department: 'Road',
+            isDisabled: false,
+        },
+        {
+            email: 'waste-tech@cityfix.org',
+            password: 'tech123',
+            fullName: 'Hana Girma',
+            role: 'TECHNICIAN',
+            department: 'Waste',
+            isDisabled: false,
+        },
+        {
+            email: 'electricity-tech@cityfix.org',
+            password: 'tech123',
+            fullName: 'Solomon Bekele',
+            role: 'TECHNICIAN',
+            department: 'Electricity',
+            isDisabled: false,
+        },
     ];
 
     console.log('[Seed] Checking default admin users...');

@@ -2,7 +2,7 @@ const { DataTypes, Model } = require('sequelize');
 const sequelize = require('../config/db');
 
 const DEPARTMENTS = ['Water', 'Waste', 'Road', 'Electricity'];
-const ROLES = ['CITIZEN', 'SECTOR_ADMIN', 'SUPER_ADMIN'];
+const ROLES = ['CITIZEN', 'SECTOR_ADMIN', 'SUPER_ADMIN', 'TECHNICIAN'];
 
 class User extends Model {}
 
@@ -50,6 +50,11 @@ User.init(
             type: DataTypes.BOOLEAN,
             allowNull: false,
             defaultValue: false,
+        },
+        specialization: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            defaultValue: null,
         },
     },
     {

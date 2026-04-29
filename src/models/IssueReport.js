@@ -2,7 +2,7 @@ const { DataTypes, Model } = require('sequelize');
 const sequelize = require('../config/db');
 
 const CATEGORIES = ['Water', 'Waste', 'Road', 'Electricity'];
-const STATUSES = ['Pending', 'In Progress', 'Resolved'];
+const STATUSES = ['Pending', 'Approved', 'Assigned', 'In Progress', 'Waiting Verification', 'Resolved', 'Rejected'];
 
 class IssueReport extends Model {
     /**

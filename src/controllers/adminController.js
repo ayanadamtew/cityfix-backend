@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { IssueReport, User, ReportedPost, Comment, Feedback } = require('../models');
+const { IssueReport, User, ReportedPost, Comment, Feedback, StatusHistory } = require('../models');
 const { getAnalytics } = require('../services/analyticsService');
 const { sendResolutionNotification } = require('../services/notificationService');
 const { admin } = require('../config/firebase');
@@ -46,7 +46,7 @@ const updateIssueStatus = async (req, res, next) => {
         }
 
         const { status } = req.body;
-        const allowed = ['Pending', 'In Progress', 'Resolved'];
+        const allowed = ['Pending', 'Approved', 'Assigned', 'In Progress', 'Waiting Verification', 'Resolved', 'Rejected'];
 
         if (!allowed.includes(status)) {
             return res.status(422).json({
@@ -64,7 +64,16 @@ const updateIssueStatus = async (req, res, next) => {
             return res.status(404).json({ message: 'Issue not found or not assigned to you.' });
         }
 
+        const fromStatus = issue.status;
         await issue.update({ status });
+
+        // Record status change
+        await StatusHistory.create({
+            issueId: issue.id,
+            fromStatus,
+            toStatus: status,
+            changedById: req.user.id,
+        });
 
         // Fire push notification in background when issue is resolved
         if (status === 'Resolved') {

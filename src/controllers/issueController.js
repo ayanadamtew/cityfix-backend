@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { IssueReport, Comment, ReportedPost, Feedback, User } = require('../models');
+const { IssueReport, Comment, ReportedPost, Feedback, User, Assignment } = require('../models');
 const { findAdminByCategory } = require('../services/routingService');
 const { toggleUrgencyVote } = require('../services/voteService');
 const { getIo } = require('../services/socketService');
@@ -37,6 +37,12 @@ const getIssues = async (req, res, next) => {
                 { model: User, as: 'citizen', attributes: ['id', 'fullName'] },
                 { model: User, as: 'assignedAdmin', attributes: ['id', 'fullName', 'department'] },
                 { model: Comment, as: 'comments', attributes: [] }, // for count only
+                {
+                    model: Assignment,
+                    as: 'assignment',
+                    attributes: ['id', 'status'],
+                    include: [{ model: User, as: 'technician', attributes: ['id', 'fullName', 'specialization', 'phoneNumber'] }],
+                },
             ],
         });
 
@@ -98,6 +104,12 @@ const getIssueById = async (req, res, next) => {
             include: [
                 { model: User, as: 'citizen', attributes: ['id', 'fullName', 'email', 'phoneNumber'] },
                 { model: User, as: 'assignedAdmin', attributes: ['id', 'fullName', 'department'] },
+                {
+                    model: Assignment,
+                    as: 'assignment',
+                    attributes: ['id', 'status'],
+                    include: [{ model: User, as: 'technician', attributes: ['id', 'fullName', 'specialization', 'phoneNumber'] }],
+                },
             ],
         });
 
@@ -237,6 +249,12 @@ const getMyIssues = async (req, res, next) => {
             order: [['createdAt', 'DESC']],
             include: [
                 { model: User, as: 'assignedAdmin', attributes: ['id', 'fullName', 'department'] },
+                {
+                    model: Assignment,
+                    as: 'assignment',
+                    attributes: ['id', 'status'],
+                    include: [{ model: User, as: 'technician', attributes: ['id', 'fullName', 'specialization', 'phoneNumber'] }],
+                },
             ],
         });
 
