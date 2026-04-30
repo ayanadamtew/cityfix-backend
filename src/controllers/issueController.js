@@ -284,6 +284,35 @@ const submitFeedback = async (req, res, next) => {
             { returning: true }
         );
 
+        // Update the technician's average rating
+        const assignment = await Assignment.findOne({ where: { issueId } });
+        if (assignment && assignment.technicianId) {
+            const technician = await User.findByPk(assignment.technicianId);
+            if (technician) {
+                // Find all assignments for this technician
+                const techAssignments = await Assignment.findAll({
+                    where: { technicianId: technician.id },
+                    attributes: ['issueId']
+                });
+                const issueIds = techAssignments.map(a => a.issueId);
+                
+                // Find all feedbacks for these issues
+                const { Op } = require('sequelize');
+                const allFeedbacks = await Feedback.findAll({
+                    where: { issueId: { [Op.in]: issueIds } }
+                });
+                
+                if (allFeedbacks.length > 0) {
+                    const totalRating = allFeedbacks.reduce((sum, f) => sum + f.rating, 0);
+                    const avg = totalRating / allFeedbacks.length;
+                    await technician.update({
+                        averageRating: parseFloat(avg.toFixed(1)),
+                        ratingCount: allFeedbacks.length,
+                    });
+                }
+            }
+        }
+
         res.status(201).json(feedback);
     } catch (err) {
         next(err);

@@ -83,7 +83,7 @@ const getTechnicians = async (req, res, next) => {
         const technicians = await User.findAll({
             where,
             order: [['createdAt', 'DESC']],
-            attributes: ['id', 'fullName', 'email', 'phoneNumber', 'department', 'specialization', 'isDisabled', 'createdAt'],
+            attributes: ['id', 'fullName', 'email', 'phoneNumber', 'department', 'specialization', 'isDisabled', 'averageRating', 'ratingCount', 'createdAt'],
         });
 
         res.json(technicians);

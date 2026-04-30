@@ -56,6 +56,16 @@ User.init(
             allowNull: true,
             defaultValue: null,
         },
+        averageRating: {
+            type: DataTypes.FLOAT,
+            allowNull: false,
+            defaultValue: 0.0,
+        },
+        ratingCount: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 0,
+        },
     },
     {
         sequelize,
