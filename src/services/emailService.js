@@ -62,7 +62,7 @@ const sendTechnicianCredentials = async (technician, username, rawPassword) => {
         const loginUrl = process.env.TECHNICIAN_APP_URL || 'https://cityfix-technician.app';
 
         const mailOptions = {
-            from: '"CityFix Administration" <noreply@cityfix.com>',
+            from: `"CityFix Administration" <${process.env.SMTP_USER}>`,
             to: technician.email,
             subject: 'CityFix Technician Account Credentials',
             text: `Hello ${technician.fullName},
