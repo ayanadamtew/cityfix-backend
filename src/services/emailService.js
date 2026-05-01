@@ -7,12 +7,18 @@ let transporter;
 const initializeTransporter = async () => {
     if (!transporter) {
         if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+            console.log(`[EmailService] Initializing SMTP for ${process.env.SMTP_USER}`);
             transporter = nodemailer.createTransport({
-                service: 'gmail', // or your preferred service
+                host: 'smtp.gmail.com',
+                port: 587,
+                secure: false, // TLS
                 auth: {
                     user: process.env.SMTP_USER,
                     pass: process.env.SMTP_PASS,
                 },
+                tls: {
+                    rejectUnauthorized: false
+                }
             });
         } else {
             // Fallback to ethereal for testing
