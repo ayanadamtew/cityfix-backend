@@ -23,6 +23,15 @@ User.init(
             allowNull: false,
             defaultValue: 'CITIZEN',
         },
+        username: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            unique: 'users_username_unique',
+        },
+        passwordHash: {
+            type: DataTypes.STRING,
+            allowNull: true,
+        },
         fullName: {
             type: DataTypes.STRING,
             allowNull: false,

@@ -13,6 +13,9 @@ const {
     sendConfirmationRequestNotification,
     sendStatusUpdateNotification,
 } = require('../services/notificationService');
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
+const { sendTechnicianCredentials } = require('../services/emailService');
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTOR ADMIN — Technician Management
@@ -24,10 +27,10 @@ const {
  */
 const createTechnician = async (req, res, next) => {
     try {
-        const { fullName, email, password, phoneNumber, specialization } = req.body;
+        const { fullName, email, phoneNumber, specialization } = req.body;
 
-        if (!fullName || !email || !password) {
-            return res.status(400).json({ message: 'fullName, email, and password are required.' });
+        if (!fullName || !email) {
+            return res.status(400).json({ message: 'fullName and email are required.' });
         }
 
         const department = req.user.department;
@@ -47,10 +50,19 @@ const createTechnician = async (req, res, next) => {
             specArray = Array.isArray(specialization) ? specialization : [specialization];
         }
 
+        // Generate credentials
+        const baseUsername = fullName.split(' ')[0].toLowerCase().replace(/[^a-z]/g, '');
+        const randomDigits = Math.floor(1000 + Math.random() * 9000);
+        let username = `${baseUsername}${randomDigits}`;
+        if (!username) username = `tech${randomDigits}`;
+        
+        const rawPassword = `Temp@${crypto.randomBytes(4).toString('hex')}`;
+        const passwordHash = await bcrypt.hash(rawPassword, 10);
+
         // Create Firebase account
         const firebaseUser = await admin.auth().createUser({
             email,
-            password,
+            password: rawPassword,
             displayName: fullName,
         });
 
@@ -60,12 +72,16 @@ const createTechnician = async (req, res, next) => {
         const technician = await User.create({
             firebaseUid: firebaseUser.uid,
             email,
+            username,
+            passwordHash,
             fullName,
             phoneNumber: phoneNumber || null,
             role: 'TECHNICIAN',
             department,
             specialization: specArray,
         });
+
+        await sendTechnicianCredentials(technician, username, rawPassword);
 
         res.status(201).json({ message: 'Technician registered successfully.', technician });
     } catch (err) {
@@ -98,7 +114,7 @@ const getTechnicians = async (req, res, next) => {
         let technicians = await User.findAll({
             where,
             order: [['createdAt', 'DESC']],
-            attributes: ['id', 'fullName', 'email', 'phoneNumber', 'department', 'specialization', 'isDisabled', 'averageRating', 'ratingCount', 'createdAt'],
+            attributes: ['id', 'fullName', 'username', 'email', 'phoneNumber', 'department', 'specialization', 'isDisabled', 'averageRating', 'ratingCount', 'createdAt'],
         });
 
         // If subcategory filter is provided, sort so matching technicians come first
@@ -513,6 +529,44 @@ const getTechnicianStats = async (req, res, next) => {
     }
 };
 
+/**
+ * POST /api/admin/technicians/:id/credentials/reset
+ * Resets a technician's password, updates Firebase and DB, and sends email.
+ */
+const resetTechnicianPassword = async (req, res, next) => {
+    try {
+        const technician = await User.findOne({
+            where: {
+                id: req.params.id,
+                role: 'TECHNICIAN',
+                department: req.user.department,
+            },
+        });
+
+        if (!technician) {
+            return res.status(404).json({ message: 'Technician not found or not in your department.' });
+        }
+
+        const rawPassword = `Temp@${crypto.randomBytes(4).toString('hex')}`;
+        const passwordHash = await bcrypt.hash(rawPassword, 10);
+
+        // Update Firebase
+        await admin.auth().updateUser(technician.firebaseUid, {
+            password: rawPassword,
+        });
+
+        // Update DB
+        await technician.update({ passwordHash });
+
+        // Send email
+        await sendTechnicianCredentials(technician, technician.username, rawPassword);
+
+        res.json({ message: 'Password reset successfully. Credentials sent.' });
+    } catch (err) {
+        next(err);
+    }
+};
+
 module.exports = {
     // Sector Admin
     createTechnician,
@@ -520,6 +574,7 @@ module.exports = {
     updateTechnician,
     toggleTechnicianStatus,
     assignTechnician,
+    resetTechnicianPassword,
     // Technician
     getTechnicianTasks,
     getTechnicianTaskDetail,

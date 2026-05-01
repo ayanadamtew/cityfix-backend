@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { body } = require('express-validator');
 
-const { register, getMe, updateFcmToken, updateProfile } = require('../controllers/authController');
+const { register, getMe, updateFcmToken, updateProfile, loginTechnician } = require('../controllers/authController');
 const requireAuth = require('../middlewares/requireAuth');
 const validate = require('../middlewares/validate');
 
@@ -47,5 +47,16 @@ router.put('/auth/profile', requireAuth, updateProfile);
 
 // GET /api/users/me
 router.get('/users/me', requireAuth, getMe);
+
+// POST /api/auth/technician/login
+router.post(
+    '/auth/technician/login',
+    [
+        body('username').notEmpty().withMessage('Username is required.'),
+        body('password').notEmpty().withMessage('Password is required.'),
+    ],
+    validate,
+    loginTechnician
+);
 
 module.exports = router;

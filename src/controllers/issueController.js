@@ -515,7 +515,7 @@ const confirmResolution = async (req, res, next) => {
             order: [['submittedAt', 'DESC']],
         });
 
-        const newStatus = confirmed ? 'Resolved' : 'Rejected';
+        const newStatus = confirmed ? 'Resolved' : 'In Progress';
         const notes = confirmed ? 'Citizen confirmed the fix.' : (reason || 'Citizen rejected the fix.');
 
         // Update issue and assignment

@@ -15,6 +15,7 @@ const {
     updateTechnician,
     toggleTechnicianStatus,
     assignTechnician,
+    resetTechnicianPassword,
 } = require('../controllers/technicianController');
 const requireAuth = require('../middlewares/requireAuth');
 const requireRole = require('../middlewares/requireRole');
@@ -38,6 +39,7 @@ router.post('/technicians', requireAuth, requireRole(['SECTOR_ADMIN']), createTe
 router.get('/technicians', requireAuth, requireRole(ADMIN_ROLES), getTechnicians);
 router.put('/technicians/:id', requireAuth, requireRole(['SECTOR_ADMIN']), updateTechnician);
 router.put('/technicians/:id/status', requireAuth, requireRole(['SECTOR_ADMIN']), toggleTechnicianStatus);
+router.post('/technicians/:id/credentials/reset', requireAuth, requireRole(['SECTOR_ADMIN']), resetTechnicianPassword);
 
 // ─── Technician Assignment ──────────────────────────────────────────────────
 router.post('/issues/:id/assign', requireAuth, requireRole(['SECTOR_ADMIN']), assignTechnician);

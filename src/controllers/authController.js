@@ -1,5 +1,6 @@
 const { admin } = require('../config/firebase');
 const { User } = require('../models');
+const bcrypt = require('bcryptjs');
 
 /**
  * POST /api/auth/register
@@ -93,4 +94,41 @@ const updateProfile = async (req, res, next) => {
     }
 };
 
-module.exports = { register, getMe, updateFcmToken, updateProfile };
+/**
+ * POST /api/auth/technician/login
+ * Logs in a technician using username and password. Returns a Firebase Custom Token.
+ */
+const loginTechnician = async (req, res, next) => {
+    try {
+        const { username, password } = req.body;
+        if (!username || !password) {
+            return res.status(400).json({ message: 'Username and password are required.' });
+        }
+
+        const user = await User.findOne({
+            where: { username, role: 'TECHNICIAN' }
+        });
+
+        if (!user || !user.passwordHash) {
+            return res.status(401).json({ message: 'Invalid username or password.' });
+        }
+
+        const isValid = await bcrypt.compare(password, user.passwordHash);
+        if (!isValid) {
+            return res.status(401).json({ message: 'Invalid username or password.' });
+        }
+
+        if (user.isDisabled) {
+            return res.status(403).json({ message: 'Your account has been deactivated. Please contact support.' });
+        }
+
+        // Generate Firebase custom token
+        const customToken = await admin.auth().createCustomToken(user.firebaseUid);
+
+        res.json({ token: customToken, user });
+    } catch (err) {
+        next(err);
+    }
+};
+
+module.exports = { register, getMe, updateFcmToken, updateProfile, loginTechnician };
