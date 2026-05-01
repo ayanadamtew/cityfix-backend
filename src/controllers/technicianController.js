@@ -56,7 +56,7 @@ const createTechnician = async (req, res, next) => {
         let username = `${baseUsername}${randomDigits}`;
         if (!username) username = `tech${randomDigits}`;
         
-        const rawPassword = `Temp@${crypto.randomBytes(4).toString('hex')}`;
+        const rawPassword = crypto.randomBytes(6).toString('hex'); // 12-character random hex
         const passwordHash = await bcrypt.hash(rawPassword, 10);
 
         // Create Firebase account
@@ -547,7 +547,7 @@ const resetTechnicianPassword = async (req, res, next) => {
             return res.status(404).json({ message: 'Technician not found or not in your department.' });
         }
 
-        const rawPassword = `Temp@${crypto.randomBytes(4).toString('hex')}`;
+        const rawPassword = crypto.randomBytes(6).toString('hex'); // 12-character random hex
         const passwordHash = await bcrypt.hash(rawPassword, 10);
 
         // Update Firebase

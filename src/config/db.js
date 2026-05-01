@@ -65,7 +65,7 @@ const seedDefaultUsers = async () => {
         // ─── Seed Technicians ────────────────────────────────────────────
         {
             email: 'water-tech@cityfix.org',
-            password: 'tech123',
+            password: 'water' + Math.floor(1000 + Math.random() * 9000),
             fullName: 'Abebe Tadesse',
             role: 'TECHNICIAN',
             department: 'Water',
@@ -74,7 +74,7 @@ const seedDefaultUsers = async () => {
         },
         {
             email: 'road-tech@cityfix.org',
-            password: 'tech123',
+            password: 'road' + Math.floor(1000 + Math.random() * 9000),
             fullName: 'Dawit Mekonnen',
             role: 'TECHNICIAN',
             department: 'Road',
@@ -83,7 +83,7 @@ const seedDefaultUsers = async () => {
         },
         {
             email: 'waste-tech@cityfix.org',
-            password: 'tech123',
+            password: 'waste' + Math.floor(1000 + Math.random() * 9000),
             fullName: 'Hana Girma',
             role: 'TECHNICIAN',
             department: 'Waste',
@@ -92,7 +92,7 @@ const seedDefaultUsers = async () => {
         },
         {
             email: 'electricity-tech@cityfix.org',
-            password: 'tech123',
+            password: 'elec' + Math.floor(1000 + Math.random() * 9000),
             fullName: 'Solomon Bekele',
             role: 'TECHNICIAN',
             department: 'Electricity',
