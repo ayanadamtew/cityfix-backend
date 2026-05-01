@@ -168,6 +168,17 @@ const connectDB = async () => {
     try {
         await sequelize.authenticate();
         console.log('PostgreSQL connected successfully.');
+
+        // Manual migration: Fix for specialization column type change (Postgres requires explicit USING clause)
+        if (process.env.NODE_ENV !== 'test') {
+            try {
+                await sequelize.query('ALTER TABLE users ALTER COLUMN specialization TYPE JSON USING specialization::json;');
+                console.log('[Migration] specialization column cast to JSON successfully.');
+            } catch (e) {
+                // Ignore if it fails (column might not exist yet or already be JSON)
+            }
+        }
+
         // sync({ alter: true }) keeps existing tables in sync with model definitions
         await sequelize.sync({ alter: true });
         console.log('Database schema synced.');
