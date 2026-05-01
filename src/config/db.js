@@ -169,13 +169,19 @@ const connectDB = async () => {
         await sequelize.authenticate();
         console.log('PostgreSQL connected successfully.');
 
-        // Manual migration: Fix for specialization column type change (Postgres requires explicit USING clause)
+        // Manual migration: Fix for specialization column type change
         if (process.env.NODE_ENV !== 'test') {
             try {
-                await sequelize.query('ALTER TABLE users ALTER COLUMN specialization TYPE JSON USING specialization::json;');
-                console.log('[Migration] specialization column cast to JSON successfully.');
+                const [results] = await sequelize.query(
+                    "SELECT data_type FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'specialization';"
+                );
+                
+                if (results.length > 0 && results[0].data_type !== 'json' && results[0].data_type !== 'jsonb') {
+                    console.log(`[Migration] Specialization column is ${results[0].data_type}. Dropping it to allow clean recreation as JSON.`);
+                    await sequelize.query('ALTER TABLE users DROP COLUMN specialization;');
+                }
             } catch (e) {
-                // Ignore if it fails (column might not exist yet or already be JSON)
+                console.log('[Migration] Column fix skipped or not needed:', e.message);
             }
         }
 
