@@ -2,7 +2,7 @@ const { DataTypes, Model } = require('sequelize');
 const sequelize = require('../config/db');
 
 const CATEGORIES = ['Water', 'Waste', 'Road', 'Electricity'];
-const STATUSES = ['Pending', 'Approved', 'Assigned', 'In Progress', 'Waiting Verification', 'Resolved', 'Rejected'];
+const STATUSES = ['Pending', 'Approved', 'Assigned', 'In Progress', 'Waiting Confirmation', 'Resolved', 'Rejected'];
 
 class IssueReport extends Model {
     /**
@@ -49,6 +49,11 @@ IssueReport.init(
         category: {
             type: DataTypes.ENUM(...CATEGORIES),
             allowNull: false,
+        },
+        subcategory: {
+            type: DataTypes.STRING,
+            allowNull: true,
+            defaultValue: null,
         },
         description: {
             type: DataTypes.TEXT,

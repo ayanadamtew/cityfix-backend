@@ -69,6 +69,7 @@ const seedDefaultUsers = async () => {
             fullName: 'Abebe Tadesse',
             role: 'TECHNICIAN',
             department: 'Water',
+            specialization: ['Pipe Leakage', 'Broken Water Pipe', 'Low Water Pressure'],
             isDisabled: false,
         },
         {
@@ -77,6 +78,7 @@ const seedDefaultUsers = async () => {
             fullName: 'Dawit Mekonnen',
             role: 'TECHNICIAN',
             department: 'Road',
+            specialization: ['Pothole', 'Road Crack', 'Damaged Sidewalk'],
             isDisabled: false,
         },
         {
@@ -85,6 +87,7 @@ const seedDefaultUsers = async () => {
             fullName: 'Hana Girma',
             role: 'TECHNICIAN',
             department: 'Waste',
+            specialization: ['Uncollected Garbage', 'Overflowing Bin', 'Illegal Dumping'],
             isDisabled: false,
         },
         {
@@ -93,6 +96,7 @@ const seedDefaultUsers = async () => {
             fullName: 'Solomon Bekele',
             role: 'TECHNICIAN',
             department: 'Electricity',
+            specialization: ['Street Light Failure', 'Damaged Electric Pole', 'Electrical Hazard'],
             isDisabled: false,
         },
     ];
@@ -128,13 +132,14 @@ const seedDefaultUsers = async () => {
 
             // --- Upsert into PostgreSQL ---
             await sequelize.query(
-                `INSERT INTO users (id, "firebaseUid", email, "fullName", role, department, "isDisabled", "createdAt", "updatedAt")
-                 VALUES (gen_random_uuid(), :firebaseUid, :email, :fullName, :role, :department, :isDisabled, NOW(), NOW())
+                `INSERT INTO users (id, "firebaseUid", email, "fullName", role, department, specialization, "isDisabled", "createdAt", "updatedAt")
+                 VALUES (gen_random_uuid(), :firebaseUid, :email, :fullName, :role, :department, :specialization, :isDisabled, NOW(), NOW())
                  ON CONFLICT (email) DO UPDATE SET
                    "firebaseUid" = EXCLUDED."firebaseUid",
                    "fullName"    = EXCLUDED."fullName",
                    role          = EXCLUDED.role,
                    department    = EXCLUDED.department,
+                   specialization = EXCLUDED.specialization,
                    "isDisabled"  = EXCLUDED."isDisabled",
                    "updatedAt"   = NOW()`,
                 {
@@ -144,6 +149,7 @@ const seedDefaultUsers = async () => {
                         fullName: user.fullName,
                         role: user.role,
                         department: user.department,
+                        specialization: user.specialization ? JSON.stringify(user.specialization) : null,
                         isDisabled: user.isDisabled,
                     },
                     type: Sequelize.QueryTypes.INSERT,

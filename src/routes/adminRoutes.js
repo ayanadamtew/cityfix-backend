@@ -15,9 +15,6 @@ const {
     updateTechnician,
     toggleTechnicianStatus,
     assignTechnician,
-    getVerificationQueue,
-    approveProof,
-    rejectProof,
 } = require('../controllers/technicianController');
 const requireAuth = require('../middlewares/requireAuth');
 const requireRole = require('../middlewares/requireRole');
@@ -46,9 +43,7 @@ router.put('/technicians/:id/status', requireAuth, requireRole(['SECTOR_ADMIN'])
 router.post('/issues/:id/assign', requireAuth, requireRole(['SECTOR_ADMIN']), assignTechnician);
 
 // ─── Verification ───────────────────────────────────────────────────────────
-router.get('/verification', requireAuth, requireRole(ADMIN_ROLES), getVerificationQueue);
-router.post('/verification/:proofId/approve', requireAuth, requireRole(['SECTOR_ADMIN']), approveProof);
-router.post('/verification/:proofId/reject', requireAuth, requireRole(['SECTOR_ADMIN']), rejectProof);
+// Verification is now handled by citizens confirming the resolution.
 
 // ─── Moderation (Super Admin only) ──────────────────────────────────────────
 router.get(

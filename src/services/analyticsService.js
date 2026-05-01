@@ -24,12 +24,20 @@ const getAnalytics = async (department = null) => {
         raw: true,
     });
 
+    // ── 2b. Count by subcategory ──────────────────────────────────────────────
+    const subcategoryRows = await IssueReport.findAll({
+        where: { ...where, subcategory: { [Op.ne]: null } },
+        attributes: ['category', 'subcategory', [fn('COUNT', col('id')), 'count']],
+        group: ['category', 'subcategory'],
+        raw: true,
+    });
+
     // ── 3. Top 5 most urgent open issues ─────────────────────────────────────
     const topUrgent = await IssueReport.findAll({
         where: { ...where, status: { [Op.ne]: 'Resolved' } },
         order: [['urgencyCount', 'DESC']],
         limit: 5,
-        attributes: ['id', 'description', 'category', 'status', 'urgencyCount',
+        attributes: ['id', 'description', 'category', 'subcategory', 'status', 'urgencyCount',
             'latitude', 'longitude', 'address', 'kebele'],
     });
 
@@ -70,12 +78,12 @@ const getAnalytics = async (department = null) => {
             latitude: { [Op.ne]: null },
             longitude: { [Op.ne]: null },
         },
-        attributes: ['id', 'category', 'status', 'latitude', 'longitude',
+        attributes: ['id', 'category', 'subcategory', 'status', 'latitude', 'longitude',
             'address', 'kebele', 'urgencyCount', 'createdAt'],
     });
 
     // ── Build result maps ─────────────────────────────────────────────────────
-    const statusMap = { Pending: 0, Approved: 0, Assigned: 0, 'In Progress': 0, 'Waiting Verification': 0, Resolved: 0, Rejected: 0 };
+    const statusMap = { Pending: 0, Approved: 0, Assigned: 0, 'In Progress': 0, 'Waiting Confirmation': 0, Resolved: 0, Rejected: 0 };
     statusRows.forEach(({ status, count }) => {
         statusMap[status] = parseInt(count, 10);
     });
@@ -86,21 +94,25 @@ const getAnalytics = async (department = null) => {
         categoryMap[category] = parseInt(count, 10);
     });
 
+    // Build subcategory map grouped by category
+    const bySubcategory = {};
+    subcategoryRows.forEach(({ category, subcategory, count }) => {
+        if (!bySubcategory[category]) bySubcategory[category] = {};
+        bySubcategory[category][subcategory] = parseInt(count, 10);
+    });
+
     const avgFeedbackRating =
         avgFeedbackQuery[0]?.avgRating != null
             ? Number(parseFloat(avgFeedbackQuery[0].avgRating).toFixed(1))
             : 0;
 
     // PostgreSQL INTERVAL → seconds via EPOCH; SQLite returns fractional days.
-    // We convert either representation to days.
     let avgResolutionTimeDays = 0;
     const rawInterval = avgResRows[0]?.avgInterval;
     if (rawInterval != null) {
-        // PostgreSQL returns an Interval object with `seconds`; fallback for SQLite number
         if (typeof rawInterval === 'object' && rawInterval.seconds !== undefined) {
             avgResolutionTimeDays = Number((rawInterval.seconds / 86400).toFixed(1));
         } else if (typeof rawInterval === 'number') {
-            // SQLite: difference is in milliseconds (JS Date subtraction)
             avgResolutionTimeDays = Number((rawInterval / 86400000).toFixed(1));
         }
     }
@@ -110,16 +122,35 @@ const getAnalytics = async (department = null) => {
     const totalTechnicians = await User.count({ where: techWhere });
     const activeTechnicians = await User.count({ where: { ...techWhere, isDisabled: false } });
 
-    const assignWhere = department
-        ? {}
-        : {};
     const totalAssignments = await Assignment.count();
     const completedAssignments = await Assignment.count({ where: { status: 'Resolved' } });
+
+    // ── 8. Technician performance by specialization ──────────────────────────
+    const technicians = await User.findAll({
+        where: techWhere,
+        attributes: ['id', 'fullName', 'specialization', 'averageRating', 'ratingCount'],
+    });
+
+    const technicianPerformance = [];
+    for (const tech of technicians) {
+        const resolved = await Assignment.count({ where: { technicianId: tech.id, status: 'Resolved' } });
+        const total = await Assignment.count({ where: { technicianId: tech.id } });
+        technicianPerformance.push({
+            id: tech.id,
+            fullName: tech.fullName,
+            specialization: tech.specialization,
+            averageRating: tech.averageRating,
+            ratingCount: tech.ratingCount,
+            resolvedCount: resolved,
+            totalAssigned: total,
+        });
+    }
 
     return {
         totalIssues: Object.values(statusMap).reduce((a, b) => a + b, 0),
         byStatus: statusMap,
         byCategory: categoryMap,
+        bySubcategory,
         topUrgentIssues: topUrgent,
         avgResolutionTimeDays,
         avgFeedbackRating,
@@ -130,6 +161,7 @@ const getAnalytics = async (department = null) => {
             totalAssignments,
             completedAssignments,
         },
+        technicianPerformance,
     };
 };
 

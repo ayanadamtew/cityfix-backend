@@ -12,6 +12,7 @@ const authRoutes = require('./routes/authRoutes');
 const issueRoutes = require('./routes/issueRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const technicianRoutes = require('./routes/technicianRoutes');
+const subcategoryRoutes = require('./routes/subcategoryRoutes');
 const errorHandler = require('./middlewares/errorHandler');
 
 // Init Firebase before anything else
@@ -43,6 +44,7 @@ app.use('/api', authRoutes);          // /api/auth/register  /api/users/me
 app.use('/api/issues', issueRoutes);  // /api/issues  /api/issues/:id  etc.
 app.use('/api/admin', adminRoutes);          // /api/admin/issues  /api/admin/analytics  /api/admin/technicians
 app.use('/api/technician', technicianRoutes); // /api/technician/tasks  /api/technician/stats
+app.use('/api/subcategories', subcategoryRoutes); // /api/subcategories
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => res.json({ status: 'ok', service: 'CityFix API' }));

@@ -52,7 +52,7 @@ User.init(
             defaultValue: false,
         },
         specialization: {
-            type: DataTypes.STRING,
+            type: DataTypes.JSON,
             allowNull: true,
             defaultValue: null,
         },

@@ -65,36 +65,32 @@ const sendAssignmentNotification = async (assignment, issue, technician) => {
 };
 
 /**
- * Notify the sector admin when a technician submits completion proof.
+ * Notify the citizen when a technician submits completion proof.
  */
-const sendCompletionNotification = async (assignment, proof) => {
+const sendConfirmationRequestNotification = async (issue, proof) => {
     try {
-        // Find the admin who assigned this task
-        const assigner = await User.findByPk(assignment.assignedById, {
+        const citizen = await User.findByPk(issue.citizenId, {
             attributes: ['id', 'fcmToken', 'fullName'],
         });
-        if (!assigner?.fcmToken) return;
-
-        const { IssueReport } = require('../models');
-        const issue = await IssueReport.findByPk(assignment.issueId);
+        if (!citizen?.fcmToken) return;
 
         const message = {
-            token: assigner.fcmToken,
+            token: citizen.fcmToken,
             notification: {
-                title: '📋 Proof Submitted for Review',
-                body: `A technician has submitted completion proof for a ${issue?.category || ''} issue.`,
+                title: '✅ Resolution Confirmation Needed',
+                body: `A technician has marked your ${issue?.category || ''} issue as resolved. Tap to confirm.`,
             },
             data: {
                 proofId: proof.id.toString(),
-                assignmentId: assignment.id.toString(),
-                screen: 'Verification',
+                issueId: issue.id.toString(),
+                screen: 'MyReports',
             },
         };
 
         await admin.messaging().send(message);
-        console.log(`[Notification] Sent completion notification to admin ${assigner.id}`);
+        console.log(`[Notification] Sent confirmation request notification to citizen ${citizen.id}`);
     } catch (err) {
-        console.error('[Notification] Failed to send completion notification:', err.message);
+        console.error('[Notification] Failed to send confirmation request notification:', err.message);
     }
 };
 
@@ -112,14 +108,16 @@ const sendStatusUpdateNotification = async (issue, newStatus) => {
             'Approved': '👍 Report Approved',
             'Assigned': '🔧 Technician Assigned',
             'In Progress': '🔨 Work Started',
-            'Resolved': '✅ Issue Resolved',
+            'Waiting Confirmation': '✅ Resolution Confirmation Needed',
+            'Resolved': '🎉 Issue Confirmed',
         };
 
         const bodies = {
             'Approved': `Your ${issue.category} report has been reviewed and approved.`,
             'Assigned': `A technician has been assigned to your ${issue.category} report.`,
             'In Progress': `Work has started on your ${issue.category} report.`,
-            'Resolved': `Your ${issue.category} report has been resolved. Tap to rate the service.`,
+            'Waiting Confirmation': `A technician marked your ${issue.category} report as fixed. Please confirm.`,
+            'Resolved': `Your ${issue.category} report has been fully resolved. Tap to rate the service.`,
         };
 
         const title = titles[newStatus];
@@ -146,6 +144,6 @@ const sendStatusUpdateNotification = async (issue, newStatus) => {
 module.exports = {
     sendResolutionNotification,
     sendAssignmentNotification,
-    sendCompletionNotification,
+    sendConfirmationRequestNotification,
     sendStatusUpdateNotification,
 };

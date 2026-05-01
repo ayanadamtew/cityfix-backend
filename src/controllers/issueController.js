@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { IssueReport, Comment, ReportedPost, Feedback, User, Assignment } = require('../models');
+const { IssueReport, Comment, ReportedPost, Feedback, User, Assignment, CompletionProof, StatusHistory } = require('../models');
 const { findAdminByCategory } = require('../services/routingService');
 const { toggleUrgencyVote } = require('../services/voteService');
 const { getIo } = require('../services/socketService');
@@ -58,7 +58,7 @@ const getIssues = async (req, res, next) => {
  */
 const createIssue = async (req, res, next) => {
     try {
-        const { category, description, photoUrl, location, draftedAt } = req.body;
+        const { category, subcategory, description, photoUrl, location, draftedAt } = req.body;
 
         // Auto-routing
         const assignedAdminId = await findAdminByCategory(category);
@@ -67,6 +67,7 @@ const createIssue = async (req, res, next) => {
             citizenId: req.user.id,
             assignedAdminId: assignedAdminId || null,
             category,
+            subcategory: subcategory || null,
             description,
             photoUrl: photoUrl || null,
             latitude: location?.latitude ?? null,
@@ -108,7 +109,10 @@ const getIssueById = async (req, res, next) => {
                     model: Assignment,
                     as: 'assignment',
                     attributes: ['id', 'status'],
-                    include: [{ model: User, as: 'technician', attributes: ['id', 'fullName', 'specialization', 'phoneNumber'] }],
+                    include: [
+                        { model: User, as: 'technician', attributes: ['id', 'fullName', 'specialization', 'phoneNumber'] },
+                        { model: CompletionProof, as: 'proofs' }
+                    ],
                 },
             ],
         });
@@ -253,7 +257,10 @@ const getMyIssues = async (req, res, next) => {
                     model: Assignment,
                     as: 'assignment',
                     attributes: ['id', 'status'],
-                    include: [{ model: User, as: 'technician', attributes: ['id', 'fullName', 'specialization', 'phoneNumber'] }],
+                    include: [
+                        { model: User, as: 'technician', attributes: ['id', 'fullName', 'specialization', 'phoneNumber'] },
+                        { model: CompletionProof, as: 'proofs' }
+                    ],
                 },
             ],
         });
@@ -326,7 +333,7 @@ const submitFeedback = async (req, res, next) => {
 const editIssue = async (req, res, next) => {
     try {
         const issueId = req.params.id;
-        const { description, category, location } = req.body;
+        const { description, category, subcategory, location } = req.body;
 
         const issue = await IssueReport.findByPk(issueId);
         if (!issue) {
@@ -346,6 +353,7 @@ const editIssue = async (req, res, next) => {
         await issue.update({
             description,
             category,
+            subcategory: subcategory !== undefined ? subcategory : issue.subcategory,
             latitude: location?.latitude ?? issue.latitude,
             longitude: location?.longitude ?? issue.longitude,
             address: location?.address ?? issue.address,
@@ -470,6 +478,84 @@ const deleteIssue = async (req, res, next) => {
     }
 };
 
+/**
+ * POST /api/issues/:id/confirm
+ * Citizen confirms or rejects the technician's fix.
+ */
+const confirmResolution = async (req, res, next) => {
+    try {
+        const issueId = req.params.id;
+        const { confirmed, reason } = req.body; // confirmed is boolean, reason optional string
+
+        const issue = await IssueReport.findByPk(issueId, {
+            include: [{ model: Assignment, as: 'assignment' }],
+        });
+
+        if (!issue) {
+            return res.status(404).json({ message: 'Issue not found.' });
+        }
+
+        // Verify ownership
+        if (issue.citizenId !== req.user.id) {
+            return res.status(403).json({ message: 'Not authorized to confirm this issue.' });
+        }
+
+        if (issue.status !== 'Waiting Confirmation') {
+            return res.status(400).json({ message: 'Issue is not waiting for confirmation.' });
+        }
+
+        const assignment = issue.assignment;
+        if (!assignment) {
+            return res.status(400).json({ message: 'No assignment found for this issue.' });
+        }
+
+        // Find the latest proof
+        const proof = await CompletionProof.findOne({
+            where: { assignmentId: assignment.id },
+            order: [['submittedAt', 'DESC']],
+        });
+
+        const newStatus = confirmed ? 'Resolved' : 'Rejected';
+        const notes = confirmed ? 'Citizen confirmed the fix.' : (reason || 'Citizen rejected the fix.');
+
+        // Update issue and assignment
+        const fromStatus = issue.status;
+        await issue.update({ status: newStatus });
+        await assignment.update({ status: newStatus });
+
+        // Update proof if it exists
+        if (proof) {
+            await proof.update({
+                verificationStatus: confirmed ? 'Approved' : 'Rejected',
+                verifiedAt: new Date(),
+                verifiedById: req.user.id,
+                rejectionReason: confirmed ? null : reason,
+            });
+        }
+
+        // Record status change
+        await StatusHistory.create({
+            issueId: issue.id,
+            fromStatus,
+            toStatus: newStatus,
+            changedById: req.user.id,
+            notes,
+        });
+
+        // Socket event
+        try {
+            const io = getIo();
+            io.emit('issue_status_changed', { issueId: issue.id, status: newStatus });
+        } catch (err) {
+            console.error('[Socket.io] Failed to emit status change', err);
+        }
+
+        res.json({ message: `Issue ${newStatus}.`, issue });
+    } catch (err) {
+        next(err);
+    }
+};
+
 module.exports = {
     getIssues,
     createIssue,
@@ -482,4 +568,5 @@ module.exports = {
     submitFeedback,
     checkDuplicate,
     deleteIssue,
+    confirmResolution,
 };

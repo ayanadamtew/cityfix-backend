@@ -10,7 +10,7 @@ const { admin } = require('../config/firebase');
 const { getIo } = require('../services/socketService');
 const {
     sendAssignmentNotification,
-    sendCompletionNotification,
+    sendConfirmationRequestNotification,
     sendStatusUpdateNotification,
 } = require('../services/notificationService');
 
@@ -41,6 +41,12 @@ const createTechnician = async (req, res, next) => {
             return res.status(400).json({ message: 'A user with this email already exists.' });
         }
 
+        // Normalize specialization to array
+        let specArray = null;
+        if (specialization) {
+            specArray = Array.isArray(specialization) ? specialization : [specialization];
+        }
+
         // Create Firebase account
         const firebaseUser = await admin.auth().createUser({
             email,
@@ -58,11 +64,17 @@ const createTechnician = async (req, res, next) => {
             phoneNumber: phoneNumber || null,
             role: 'TECHNICIAN',
             department,
-            specialization: specialization || null,
+            specialization: specArray,
         });
 
         res.status(201).json({ message: 'Technician registered successfully.', technician });
     } catch (err) {
+        if (err.code && err.code.startsWith('auth/')) {
+            return res.status(400).json({ message: err.message });
+        }
+        if (err.name === 'SequelizeUniqueConstraintError') {
+            return res.status(400).json({ message: 'A user with this information already exists in the database.' });
+        }
         next(err);
     }
 };
@@ -80,11 +92,23 @@ const getTechnicians = async (req, res, next) => {
             where.department = req.user.department;
         }
 
-        const technicians = await User.findAll({
+        // Optional: filter by subcategory specialization
+        const { subcategory } = req.query;
+
+        let technicians = await User.findAll({
             where,
             order: [['createdAt', 'DESC']],
             attributes: ['id', 'fullName', 'email', 'phoneNumber', 'department', 'specialization', 'isDisabled', 'averageRating', 'ratingCount', 'createdAt'],
         });
+
+        // If subcategory filter is provided, sort so matching technicians come first
+        if (subcategory) {
+            technicians = technicians.sort((a, b) => {
+                const aMatch = Array.isArray(a.specialization) && a.specialization.includes(subcategory) ? 1 : 0;
+                const bMatch = Array.isArray(b.specialization) && b.specialization.includes(subcategory) ? 1 : 0;
+                return bMatch - aMatch; // matching first
+            });
+        }
 
         res.json(technicians);
     } catch (err) {
@@ -112,10 +136,20 @@ const updateTechnician = async (req, res, next) => {
 
         const { fullName, phoneNumber, specialization } = req.body;
 
+        // Normalize specialization to array
+        let specArray = undefined;
+        if (specialization !== undefined) {
+            if (specialization === null || (Array.isArray(specialization) && specialization.length === 0)) {
+                specArray = null;
+            } else {
+                specArray = Array.isArray(specialization) ? specialization : [specialization];
+            }
+        }
+
         await technician.update({
             ...(fullName && { fullName }),
             ...(phoneNumber !== undefined && { phoneNumber }),
-            ...(specialization !== undefined && { specialization }),
+            ...(specArray !== undefined && { specialization: specArray }),
         });
 
         res.json({ message: 'Technician updated.', technician });
@@ -258,180 +292,7 @@ const assignTechnician = async (req, res, next) => {
     }
 };
 
-/**
- * GET /api/admin/verification
- * List issues awaiting verification in the admin's department.
- */
-const getVerificationQueue = async (req, res, next) => {
-    try {
-        const where = { status: 'Waiting Verification' };
 
-        if (req.user.role === 'SECTOR_ADMIN') {
-            where.category = req.user.department;
-        }
-
-        const issues = await IssueReport.findAll({
-            where,
-            order: [['updatedAt', 'DESC']],
-            include: [
-                { model: User, as: 'citizen', attributes: ['id', 'fullName', 'email'] },
-                {
-                    model: Assignment,
-                    as: 'assignment',
-                    include: [
-                        { model: User, as: 'technician', attributes: ['id', 'fullName', 'phoneNumber', 'specialization'] },
-                        {
-                            model: CompletionProof,
-                            as: 'proofs',
-                            order: [['submittedAt', 'DESC']],
-                            limit: 1,
-                        },
-                    ],
-                },
-            ],
-        });
-
-        res.json(issues);
-    } catch (err) {
-        next(err);
-    }
-};
-
-/**
- * POST /api/admin/verification/:proofId/approve
- * Approve a completion proof → issue becomes Resolved.
- */
-const approveProof = async (req, res, next) => {
-    try {
-        const proof = await CompletionProof.findByPk(req.params.proofId, {
-            include: [
-                {
-                    model: Assignment,
-                    as: 'assignment',
-                    include: [
-                        { model: IssueReport, as: 'issue' },
-                        { model: User, as: 'technician', attributes: ['id', 'fullName', 'fcmToken'] },
-                    ],
-                },
-            ],
-        });
-
-        if (!proof) {
-            return res.status(404).json({ message: 'Completion proof not found.' });
-        }
-
-        const issue = proof.assignment.issue;
-
-        // Verify department access
-        if (req.user.role === 'SECTOR_ADMIN' && issue.category !== req.user.department) {
-            return res.status(403).json({ message: 'Not authorized to verify this issue.' });
-        }
-
-        // Update proof
-        await proof.update({
-            verificationStatus: 'Approved',
-            verifiedAt: new Date(),
-            verifiedById: req.user.id,
-        });
-
-        // Update assignment status
-        await proof.assignment.update({ status: 'Resolved' });
-
-        // Update issue status
-        const fromStatus = issue.status;
-        await issue.update({ status: 'Resolved' });
-
-        // Record status change
-        await StatusHistory.create({
-            issueId: issue.id,
-            fromStatus,
-            toStatus: 'Resolved',
-            changedById: req.user.id,
-            notes: 'Proof approved by admin',
-        });
-
-        // Notify citizen
-        sendStatusUpdateNotification(issue, 'Resolved').catch(() => {});
-
-        try {
-            const io = getIo();
-            io.emit('issue_status_changed', { issueId: issue.id, status: 'Resolved' });
-        } catch (err) {
-            console.error('[Socket.io] Failed to emit status change', err);
-        }
-
-        res.json({ message: 'Proof approved. Issue resolved.', proof });
-    } catch (err) {
-        next(err);
-    }
-};
-
-/**
- * POST /api/admin/verification/:proofId/reject
- * Reject a completion proof → issue goes back to Rejected for rework.
- */
-const rejectProof = async (req, res, next) => {
-    try {
-        const { reason } = req.body;
-
-        const proof = await CompletionProof.findByPk(req.params.proofId, {
-            include: [
-                {
-                    model: Assignment,
-                    as: 'assignment',
-                    include: [
-                        { model: IssueReport, as: 'issue' },
-                        { model: User, as: 'technician', attributes: ['id', 'fullName', 'fcmToken'] },
-                    ],
-                },
-            ],
-        });
-
-        if (!proof) {
-            return res.status(404).json({ message: 'Completion proof not found.' });
-        }
-
-        const issue = proof.assignment.issue;
-
-        if (req.user.role === 'SECTOR_ADMIN' && issue.category !== req.user.department) {
-            return res.status(403).json({ message: 'Not authorized to verify this issue.' });
-        }
-
-        // Update proof
-        await proof.update({
-            verificationStatus: 'Rejected',
-            verifiedAt: new Date(),
-            verifiedById: req.user.id,
-            rejectionReason: reason || 'Proof rejected by admin.',
-        });
-
-        // Update assignment status
-        await proof.assignment.update({ status: 'Rejected' });
-
-        // Update issue status
-        const fromStatus = issue.status;
-        await issue.update({ status: 'Rejected' });
-
-        await StatusHistory.create({
-            issueId: issue.id,
-            fromStatus,
-            toStatus: 'Rejected',
-            changedById: req.user.id,
-            notes: reason || 'Proof rejected',
-        });
-
-        try {
-            const io = getIo();
-            io.emit('issue_status_changed', { issueId: issue.id, status: 'Rejected' });
-        } catch (err) {
-            console.error('[Socket.io] Failed to emit status change', err);
-        }
-
-        res.json({ message: 'Proof rejected. Sent back for rework.', proof });
-    } catch (err) {
-        next(err);
-    }
-};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // TECHNICIAN — Task Management
@@ -596,29 +457,29 @@ const submitProof = async (req, res, next) => {
 
         // Update statuses
         const fromStatus = assignment.issue.status;
-        await assignment.update({ status: 'Waiting Verification' });
-        await assignment.issue.update({ status: 'Waiting Verification' });
+        await assignment.update({ status: 'Waiting Confirmation' });
+        await assignment.issue.update({ status: 'Waiting Confirmation' });
 
         await StatusHistory.create({
             issueId: assignment.issue.id,
             fromStatus,
-            toStatus: 'Waiting Verification',
+            toStatus: 'Waiting Confirmation',
             changedById: req.user.id,
-            notes: 'Technician submitted completion proof',
+            notes: 'Technician submitted completion proof, waiting for citizen confirmation',
         });
 
-        // Notify admin
-        sendCompletionNotification(assignment, proof).catch(() => {});
+        // Notify citizen
+        sendConfirmationRequestNotification(assignment.issue, proof).catch(() => {});
 
         try {
             const io = getIo();
-            io.emit('issue_status_changed', { issueId: assignment.issue.id, status: 'Waiting Verification' });
+            io.emit('issue_status_changed', { issueId: assignment.issue.id, status: 'Waiting Confirmation' });
             io.emit('proof_submitted', { assignmentId: assignment.id, proofId: proof.id });
         } catch (err) {
             console.error('[Socket.io] Failed to emit proof submission', err);
         }
 
-        res.status(201).json({ message: 'Proof submitted. Awaiting admin verification.', proof });
+        res.status(201).json({ message: 'Proof submitted. Awaiting citizen confirmation.', proof });
     } catch (err) {
         next(err);
     }
@@ -635,7 +496,7 @@ const getTechnicianStats = async (req, res, next) => {
         const total = await Assignment.count({ where: { technicianId } });
         const assigned = await Assignment.count({ where: { technicianId, status: 'Assigned' } });
         const inProgress = await Assignment.count({ where: { technicianId, status: 'In Progress' } });
-        const waitingVerification = await Assignment.count({ where: { technicianId, status: 'Waiting Verification' } });
+        const waitingConfirmation = await Assignment.count({ where: { technicianId, status: 'Waiting Confirmation' } });
         const resolved = await Assignment.count({ where: { technicianId, status: 'Resolved' } });
         const rejected = await Assignment.count({ where: { technicianId, status: 'Rejected' } });
 
@@ -643,7 +504,7 @@ const getTechnicianStats = async (req, res, next) => {
             total,
             assigned,
             inProgress,
-            waitingVerification,
+            waitingConfirmation,
             resolved,
             rejected,
         });
@@ -659,9 +520,6 @@ module.exports = {
     updateTechnician,
     toggleTechnicianStatus,
     assignTechnician,
-    getVerificationQueue,
-    approveProof,
-    rejectProof,
     // Technician
     getTechnicianTasks,
     getTechnicianTaskDetail,

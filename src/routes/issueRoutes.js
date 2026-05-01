@@ -34,6 +34,7 @@ router.post(
         body('category')
             .isIn(['Water', 'Waste', 'Road', 'Electricity'])
             .withMessage('category must be Water, Waste, Road, or Electricity.'),
+        body('subcategory').optional().isString().withMessage('subcategory must be a string.'),
         body('description').notEmpty().withMessage('description is required.'),
         body('location.kebele').optional().isString(),
         body('draftedAt').optional().isISO8601().withMessage('draftedAt must be a valid ISO8601 date.'),
@@ -55,6 +56,7 @@ router.put(
     requireRole(['CITIZEN']),
     [
         body('category').optional().isIn(['Water', 'Waste', 'Road', 'Electricity']),
+        body('subcategory').optional().isString(),
         body('description').optional().isString(),
         body('location.kebele').optional().isString(),
     ],
@@ -68,6 +70,19 @@ router.delete(
     requireAuth,
     requireRole(['CITIZEN']),
     deleteIssue
+);
+
+// POST /api/issues/:id/confirm – citizen confirms or rejects resolution
+router.post(
+    '/:id/confirm',
+    requireAuth,
+    requireRole(['CITIZEN']),
+    [
+        body('confirmed').isBoolean().withMessage('confirmed must be a boolean.'),
+        body('reason').optional().isString(),
+    ],
+    validate,
+    require('../controllers/issueController').confirmResolution
 );
 
 // POST /api/issues/:id/vote – toggle urgency vote

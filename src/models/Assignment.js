@@ -2,7 +2,7 @@ const { DataTypes, Model } = require('sequelize');
 const sequelize = require('../config/db');
 
 const PRIORITIES = ['Low', 'Medium', 'High', 'Urgent'];
-const ASSIGNMENT_STATUSES = ['Assigned', 'In Progress', 'Waiting Verification', 'Resolved', 'Rejected'];
+const ASSIGNMENT_STATUSES = ['Assigned', 'In Progress', 'Waiting Confirmation', 'Resolved', 'Rejected'];
 
 class Assignment extends Model {}
 

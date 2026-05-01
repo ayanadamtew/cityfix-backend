@@ -46,7 +46,7 @@ const updateIssueStatus = async (req, res, next) => {
         }
 
         const { status } = req.body;
-        const allowed = ['Pending', 'Approved', 'Assigned', 'In Progress', 'Waiting Verification', 'Resolved', 'Rejected'];
+        const allowed = ['Pending', 'Approved', 'Assigned', 'In Progress', 'Waiting Confirmation', 'Resolved', 'Rejected'];
 
         if (!allowed.includes(status)) {
             return res.status(422).json({

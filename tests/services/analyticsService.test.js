@@ -17,8 +17,12 @@ describe('analyticsService – getAnalytics', () => {
         const stats = await getAnalytics();
         expect(stats.byStatus).toEqual({
             'Pending': 0,
+            'Approved': 0,
+            'Assigned': 0,
             'In Progress': 0,
-            'Resolved': 0
+            'Waiting Confirmation': 0,
+            'Resolved': 0,
+            'Rejected': 0,
         });
         expect(stats.byCategory).toEqual({
             'Water': 0,
